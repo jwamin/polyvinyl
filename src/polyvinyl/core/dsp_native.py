@@ -50,14 +50,21 @@ def _candidate_paths() -> list[Path]:
     core = Path(__file__).resolve().parent
     for n in _lib_names():
         out.append(core / n)
+    if sys.platform == 'darwin':
+        out.append(core / 'PolyvinylDSP.framework' / 'PolyvinylDSP')
     # Meson build tree: …/build/src/dsp/
     root = os.environ.get('MESON_BUILD_ROOT')
     if root:
         for n in _lib_names():
             out.append(Path(root) / 'src' / 'dsp' / n)
+        if sys.platform == 'darwin':
+            out.append(Path(root) / 'src' / 'dsp' / 'PolyvinylDSP.framework' / 'PolyvinylDSP')
     dev_dsp = core.parents[2] / 'dsp'
     for n in _lib_names():
         out.append(dev_dsp / n)
+    if sys.platform == 'darwin':
+        cb = os.environ.get('POLYVINYL_DSP_CMAKE_BUILD', str(dev_dsp / 'build-cmake'))
+        out.append(Path(cb) / 'PolyvinylDSP.framework' / 'PolyvinylDSP')
     return out
 
 

@@ -37,6 +37,10 @@ polyvinyl
 
 After `meson compile -C build`, bundled UI resources are emitted under `build/`; running from the install prefix (or Flatpak) is the most reliable way to exercise the full UI. The C DSP library is built as `build/src/dsp/libpolyvinyl_dsp.so` (or `.dylib` on macOS); when running from a checkout without installing, set **`POLYVINYL_DSP_LIB`** to that path (or **`MESON_BUILD_ROOT`** so the loader checks `build/src/dsp/`) to try the native backend.
 
+### CMake / Make (DSP only)
+
+From `src/dsp/`, **`make`** (or **`make all`**) configures **`build-cmake/`** and builds **`libpolyvinyl_dsp.a`**, the shared **`libpolyvinyl_dsp`**, and on **Apple** platforms a **`PolyvinylDSP.framework`** bundle (Mach-O at `PolyvinylDSP.framework/PolyvinylDSP`). Targets: **`make static`**, **`make shared`**, **`make framework`** (macOS only). Override the build directory with **`BUILD_DIR=…`**. The Python loader also checks **`PolyvinylDSP.framework`** next to the modules and, on macOS, **`POLYVINYL_DSP_CMAKE_BUILD`** (default `src/dsp/build-cmake`) for the framework binary.
+
 ## Flatpak
 
 `org.jossy.gnome.polyvinyl.json` is a starter manifest (adjust module sources and add **ffmpeg** if needed). Build with `flatpak-builder` against `org.gnome.Platform`.

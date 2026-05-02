@@ -35,6 +35,8 @@ polyvinyl_pkg = files(
 polyvinyl_core = files(
   'polyvinyl/core/__init__.py',
   'polyvinyl/core/silence.py',
+  'polyvinyl/core/analysis.py',
+  'polyvinyl/core/segments.py',
   'polyvinyl/core/musicbrainz.py',
   'polyvinyl/core/export.py',
   'polyvinyl/core/naming.py',

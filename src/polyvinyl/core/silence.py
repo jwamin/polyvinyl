@@ -67,6 +67,50 @@ def _rms_linear_mono(block: bytes, sampwidth: int, nchannels: int) -> float:
     return math.sqrt(acc / denom) / peak_scale
 
 
+def rms_window_series(
+    wav_path: str,
+    *,
+    window_ms: float = 60.0,
+) -> tuple[list[float], list[float], float, int]:
+    """Scan the WAV file and return RMS per analysis window.
+
+    Returns ``(rms_linear_values, window_center_times_sec, duration_sec, frame_rate)``.
+    """
+    if window_ms <= 0:
+        raise ValueError("window_ms must be positive")
+
+    with wave.open(wav_path, "rb") as wf:
+        nchannels = wf.getnchannels()
+        sampwidth = wf.getsampwidth()
+        framerate = wf.getframerate()
+        nframes = wf.getnframes()
+
+        if nchannels < 1 or framerate <= 0:
+            raise ValueError("Invalid WAV parameters")
+        if sampwidth not in (1, 2, 3, 4):
+            raise ValueError(f"Unsupported WAV sample width: {sampwidth}")
+
+        window_frames = max(1, int(framerate * window_ms / 1000.0))
+        frame_bytes = sampwidth * nchannels
+
+        rms_values: list[float] = []
+        times_center: list[float] = []
+
+        pos = 0
+        while pos < nframes:
+            take = min(window_frames, nframes - pos)
+            raw = wf.readframes(take)
+            pos += take
+            rms = _rms_linear_mono(raw, sampwidth, nchannels)
+            rms_values.append(rms)
+            t_end = pos / framerate
+            t_start = (pos - take) / framerate
+            times_center.append((t_start + t_end) / 2.0)
+
+        duration_sec = nframes / framerate
+        return rms_values, times_center, duration_sec, framerate
+
+
 def detect_track_spans(
     wav_path: str,
     *,
@@ -89,41 +133,19 @@ def detect_track_spans(
     if min_silence_sec <= 0:
         raise ValueError("min_silence_sec must be positive")
 
-    with wave.open(wav_path, "rb") as wf:
-        nchannels = wf.getnchannels()
-        sampwidth = wf.getsampwidth()
-        framerate = wf.getframerate()
-        nframes = wf.getnframes()
+    silent_flags: list[bool]
+    times_center: list[float]
+    duration_sec: float
 
-        if nchannels < 1 or framerate <= 0:
-            raise ValueError("Invalid WAV parameters")
-        if sampwidth not in (1, 2, 3, 4):
-            raise ValueError(f"Unsupported WAV sample width: {sampwidth}")
-
-        window_frames = max(1, int(framerate * window_ms / 1000.0))
-        frame_bytes = sampwidth * nchannels
-
-        silent_flags: list[bool] = []
-        times_center: list[float] = []
-
-        pos = 0
-        while pos < nframes:
-            take = min(window_frames, nframes - pos)
-            raw = wf.readframes(take)
-            pos += take
-            rms = _rms_linear_mono(raw, sampwidth, nchannels)
-            silent_flags.append(rms < silence_threshold_linear)
-            # Window centers for boundary placement
-            t_end = pos / framerate
-            t_start = (pos - take) / framerate
-            times_center.append((t_start + t_end) / 2.0)
+    rms_values, times_center, duration_sec, framerate = rms_window_series(wav_path, window_ms=window_ms)
+    silent_flags = [rms < silence_threshold_linear for rms in rms_values]
+    nframes = int(round(duration_sec * framerate))
 
     if not silent_flags:
-        duration = nframes / framerate
-        return [TrackSpan(0.0, duration)]
+        return [TrackSpan(0.0, duration_sec)]
 
-    # Long silent runs (indices into silent_flags)
-    min_windows = max(1, int(math.ceil(min_silence_sec / (window_ms / 1000.0))))
+    window_sec = window_ms / 1000.0
+    min_windows = max(1, int(math.ceil(min_silence_sec / window_sec)))
     split_centers: list[float] = []
     i = 0
     nwin = len(silent_flags)
@@ -140,7 +162,6 @@ def detect_track_spans(
             split_centers.append(times_center[mid])
         i = j
 
-    duration_sec = nframes / framerate
     boundaries = [0.0] + split_centers + [duration_sec]
     boundaries.sort()
 

@@ -132,6 +132,61 @@
                             </property>
                           </object>
                         </child>
+                        <child>
+                          <object class="GtkButton" id="analyze_waveform_button">
+                            <property name="margin-top">8</property>
+                            <property name="halign">start</property>
+                            <property name="tooltip-text" translatable="yes">Scan loudness profile, draw waveform, and suggest silence settings</property>
+                            <property name="child">
+                              <object class="AdwButtonContent">
+                                <property name="icon-name">tools-check-symbolic</property>
+                                <property name="label" translatable="yes">Analyze waveform &amp; suggest</property>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwPreferencesGroup">
+                        <property name="title" translatable="yes">Waveform &amp; track boundaries</property>
+                        <property name="description" translatable="yes">Double-click the waveform to insert a cut. Edit times below or merge neighbouring tracks.</property>
+                        <child type="header-suffix">
+                          <object class="GtkImage">
+                            <property name="icon-name">audio-x-generic-symbolic</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkDrawingArea" id="waveform_draw">
+                            <property name="height-request">150</property>
+                            <property name="margin-top">4</property>
+                            <property name="margin-bottom">4</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkScrolledWindow">
+                            <property name="vexpand">false</property>
+                            <property name="min-content-height">160</property>
+                            <property name="max-content-height">260</property>
+                            <property name="propagate-natural-height">True</property>
+                            <property name="child">
+                              <object class="GtkListBox" id="track_list_box">
+                                <property name="selection-mode">none</property>
+                                <property name="placeholder">
+                                  <object class="GtkLabel">
+                                    <property name="label" translatable="yes">No tracks yet — detect silence or insert cuts on the waveform.</property>
+                                    <property name="margin-top">16</property>
+                                    <property name="margin-bottom">16</property>
+                                    <property name="margin-start">12</property>
+                                    <property name="margin-end">12</property>
+                                    <property name="justify">center</property>
+                                    <style><class name="dim-label"/></style>
+                                  </object>
+                                </property>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
                       </object>
                     </child>
                     <child>

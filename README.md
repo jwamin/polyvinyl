@@ -11,10 +11,12 @@ The image above is an **illustrative preview** of the layout (Libadwaita prefere
 ## Features
 
 - **Silence-based cueing** — configurable RMS threshold and minimum silence duration to match groove noise on your pressing.
+- **Waveform analysis** — builds a peak envelope for the whole rip, estimates noise vs programme level, and **suggests** RMS threshold and minimum silence (applied to the spin buttons; tune manually if needed).
+- **Track boundary CRUD** — after detection or analysis, edit **start/end** per track, **merge** with the next track, **remove** a track (merge with a neighbour), or **double‑click the waveform** to insert a new cut.
 - **MusicBrainz lookup** — enter artist and/or album; the app fetches a track list (rate-limited, descriptive User-Agent, no API key).
 - **Multi-format export** — enable any combination of FLAC (lossless), MP3 (LAME VBR), and PCM WAV per run.
 - **Library-style paths** — `{library}/{Artist}/{Album}/{NN} – {Title}.{ext}` with filesystem-safe names.
-- **Reusable core** — `polyvinyl.core` has **no GTK dependency** (detection, lookup, naming, ffmpeg-backed export) for scripts or future front ends.
+- **Reusable core** — `polyvinyl.core` has **no GTK dependency** (RMS/waveform analysis, silence detection, segment CRUD helpers, lookup, naming, ffmpeg-backed export) for scripts or future front ends.
 
 ## Requirements
 
@@ -42,7 +44,12 @@ After `meson compile -C build`, bundled UI resources are emitted under `build/`;
 
 ```python
 from polyvinyl.core import (
+    rms_window_series,
+    compute_waveform_envelope,
+    suggest_silence_params,
     detect_track_spans,
+    insert_cut,
+    set_span_range,
     lookup_track_titles,
     encode_wav_segment,
     album_output_dir,

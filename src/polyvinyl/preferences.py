@@ -19,9 +19,11 @@ def show_preferences_window(parent: Gtk.Window | None) -> None:
         win = Adw.PreferencesDialog()
     else:
         win = Adw.PreferencesWindow()
-    if parent is not None:
-        win.set_transient_for(parent)
-        win.set_modal(True)
+    # AdwPreferencesDialog is an AdwDialog, not GtkWindow — no set_transient_for / set_modal.
+    if isinstance(win, Adw.PreferencesWindow):
+        if parent is not None:
+            win.set_transient_for(parent)
+            win.set_modal(True)
 
     page = Adw.PreferencesPage(title=_('General'))
     group = Adw.PreferencesGroup(

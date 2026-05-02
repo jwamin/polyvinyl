@@ -64,6 +64,8 @@ class PolyvinylWindow(Adw.ApplicationWindow):
     analyze_waveform_button = Gtk.Template.Child()
     waveform_draw = Gtk.Template.Child()
     track_list_box = Gtk.Template.Child()
+    open_wav_button = Gtk.Template.Child()
+    open_output_button = Gtk.Template.Child()
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -80,6 +82,8 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         app = self.get_application()
         self._app_version = getattr(app, 'version', None) or '0.1.0'
 
+        self.open_wav_button.connect('clicked', self._on_open_wav_clicked)
+        self.open_output_button.connect('clicked', self._on_open_output_clicked)
         self.lookup_button.connect('clicked', self._on_lookup_clicked)
         self.detect_button.connect('clicked', self._on_detect_clicked)
         self.split_button.connect('clicked', self._on_split_clicked)
@@ -134,8 +138,7 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         except Exception:
             return 0.0
 
-    @Gtk.Template.Callback()
-    def on_open_wav_clicked(self, *_args):
+    def _on_open_wav_clicked(self, *_args):
         dialog = Gtk.FileDialog(title=_('Open WAV rip'))
         filt = Gtk.FileFilter()
         filt.set_name(_('WAV audio'))
@@ -161,8 +164,7 @@ class PolyvinylWindow(Adw.ApplicationWindow):
             self.waveform_draw.queue_draw()
             self._append_log(_('Source: {path}').format(path=path))
 
-    @Gtk.Template.Callback()
-    def on_open_output_clicked(self, *_args):
+    def _on_open_output_clicked(self, *_args):
         dialog = Gtk.FileDialog(title=_('Output folder'))
         dialog.select_folder(self, None, self._folder_cb)
 

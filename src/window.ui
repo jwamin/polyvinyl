@@ -71,10 +71,9 @@
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="GtkButton">
+                                  <object class="GtkButton" id="open_wav_button">
                                     <property name="valign">center</property>
                                     <property name="tooltip-text" translatable="yes">Choose a WAV file</property>
-                                    <signal name="clicked" handler="on_open_wav_clicked" swapped="no"/>
                                     <property name="child">
                                       <object class="AdwButtonContent">
                                         <property name="icon-name">document-open-symbolic</property>
@@ -284,10 +283,9 @@
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="GtkButton">
+                                  <object class="GtkButton" id="open_output_button">
                                     <property name="valign">center</property>
                                     <property name="tooltip-text" translatable="yes">Choose destination folder</property>
-                                    <signal name="clicked" handler="on_open_output_clicked" swapped="no"/>
                                     <property name="child">
                                       <object class="AdwButtonContent">
                                         <property name="icon-name">folder-open-symbolic</property>

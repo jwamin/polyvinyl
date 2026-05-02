@@ -193,7 +193,7 @@ class PolyvinylWindow(Adw.ApplicationWindow):
             return
 
         if not self._envelope:
-            layout = area.create_pango_layout(_('Run “Analyze waveform & suggest” after opening a WAV.'))
+            layout = area.create_pango_layout(_('Run “Analyze waveform and suggest” after opening a WAV.'))
             layout.set_alignment(Pango.Alignment.CENTER)
             layout.set_width(width * Pango.SCALE)
             _lw, lh = layout.get_pixel_size()

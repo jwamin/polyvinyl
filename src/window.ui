@@ -139,7 +139,7 @@
                             <property name="child">
                               <object class="AdwButtonContent">
                                 <property name="icon-name">tools-check-symbolic</property>
-                                <property name="label" translatable="yes">Analyze waveform &amp; suggest</property>
+                                <property name="label" translatable="yes">Analyze waveform and suggest</property>
                               </object>
                             </property>
                           </object>
@@ -148,7 +148,7 @@
                     </child>
                     <child>
                       <object class="AdwPreferencesGroup">
-                        <property name="title" translatable="yes">Waveform &amp; track boundaries</property>
+                        <property name="title" translatable="yes">Waveform and track boundaries</property>
                         <property name="description" translatable="yes">Double-click the waveform to insert a cut. Edit times below or merge neighbouring tracks.</property>
                         <child type="header-suffix">
                           <object class="GtkImage">

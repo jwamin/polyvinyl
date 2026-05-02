@@ -67,6 +67,29 @@ def _rms_linear_mono(block: bytes, sampwidth: int, nchannels: int) -> float:
     return math.sqrt(acc / denom) / peak_scale
 
 
+def _filter_split_centers_by_min_gap(
+    centers: list[float],
+    duration_sec: float,
+    min_gap_sec: float,
+) -> list[float]:
+    """Drop suggested cut times so consecutive kept cuts are at least ``min_gap_sec`` apart,
+    and the first / last resulting segments are at least ``min_gap_sec`` long.
+    """
+    if min_gap_sec <= 0 or not centers:
+        return sorted(centers)
+    centers = sorted(centers)
+    out: list[float] = []
+    last_boundary = 0.0
+    for t in centers:
+        if t - last_boundary < min_gap_sec:
+            continue
+        if duration_sec - t < min_gap_sec:
+            continue
+        out.append(t)
+        last_boundary = t
+    return out
+
+
 def _rms_window_series_python(
     wav_path: str,
     *,
@@ -133,6 +156,8 @@ def detect_track_spans(
     *,
     silence_threshold_linear: float = 0.018,
     min_silence_sec: float = 1.35,
+    min_split_gap_sec: float = 30.0,
+    target_track_count: int | None = None,
     window_ms: float = 60.0,
     boundary_pad_sec: float = 0.05,
     backend: str | None = None,
@@ -145,11 +170,21 @@ def detect_track_spans(
 
     ``min_silence_sec`` should exceed the longest intra-track pause but stay below
     typical groove gaps between LP sides or tracks (often 1–3 s).
+
+    ``min_split_gap_sec`` enforces a minimum timeline distance between consecutive
+    suggested cuts (and from file start / end), so silence within a song does not
+    flood the marker list.
+
+    If ``target_track_count`` is set (e.g. number of MusicBrainz titles), the
+    result is adjusted to exactly that many tracks when possible by merging weak
+    boundaries or splitting the longest segments.
     """
     if silence_threshold_linear <= 0:
         raise ValueError("silence_threshold_linear must be positive")
     if min_silence_sec <= 0:
         raise ValueError("min_silence_sec must be positive")
+    if min_split_gap_sec < 0:
+        raise ValueError("min_split_gap_sec must be non-negative")
 
     silent_flags: list[bool]
     times_center: list[float]
@@ -182,6 +217,8 @@ def detect_track_spans(
             split_centers.append(times_center[mid])
         i = j
 
+    split_centers = _filter_split_centers_by_min_gap(split_centers, duration_sec, min_split_gap_sec)
+
     boundaries = [0.0] + split_centers + [duration_sec]
     boundaries.sort()
 
@@ -195,4 +232,10 @@ def detect_track_spans(
 
     if not spans:
         return [TrackSpan(0.0, duration_sec)]
+
+    if target_track_count is not None and target_track_count >= 1:
+        from .segments import adjust_span_count_to_target
+
+        spans = adjust_span_count_to_target(spans, target_track_count, duration_sec)
+
     return spans

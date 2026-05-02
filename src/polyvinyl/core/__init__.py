@@ -12,6 +12,7 @@ from .export import ExportFormat, encode_wav_segment, encode_wav_segment_flac, f
 from .musicbrainz import ReleaseLookupError, lookup_track_titles, titles_for_span_count
 from .naming import album_output_dir, sanitize_path_component, track_filename
 from .segments import (
+    adjust_span_count_to_target,
     delete_track,
     insert_cut,
     internal_cut_times,
@@ -42,6 +43,7 @@ __all__ = [
     "sanitize_path_component",
     "album_output_dir",
     "track_filename",
+    "adjust_span_count_to_target",
     "normalize_spans",
     "internal_cut_times",
     "split_span_at",

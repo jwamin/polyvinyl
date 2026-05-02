@@ -31,6 +31,7 @@ polyvinyl_pkg = files(
   'polyvinyl/main.py',
   'polyvinyl/window.py',
   'polyvinyl/preferences.py',
+  'polyvinyl/playback.py',
 )
 
 polyvinyl_core = files(

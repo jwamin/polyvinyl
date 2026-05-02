@@ -147,6 +147,23 @@
                           </object>
                         </child>
                         <child>
+                          <object class="AdwSpinRow" id="min_split_gap_row">
+                            <property name="icon-name">view-reveal-symbolic</property>
+                            <property name="title" translatable="yes">Minimum gap between markers</property>
+                            <property name="subtitle" translatable="yes">Suggested cuts are at least this many seconds apart (and from file start/end)</property>
+                            <property name="digits">1</property>
+                            <property name="adjustment">
+                              <object class="GtkAdjustment" id="min_split_gap_adjustment">
+                                <property name="lower">5</property>
+                                <property name="upper">600</property>
+                                <property name="value">30</property>
+                                <property name="step-increment">5</property>
+                                <property name="page-increment">30</property>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
+                        <child>
                           <object class="GtkButton" id="analyze_waveform_button">
                             <property name="margin-top">8</property>
                             <property name="halign">start</property>
@@ -164,7 +181,7 @@
                     <child>
                       <object class="AdwPreferencesGroup">
                         <property name="title" translatable="yes">Waveform and track boundaries</property>
-                        <property name="description" translatable="yes">Single-click a marker for lookup titles. Double-click inserts a cut. Blue overlay: below RMS threshold. Green: long enough for a track gap. Use refresh after changing silence settings.</property>
+                        <property name="description" translatable="yes">Single-click a marker for lookup titles. Double-click inserts a cut. Blue overlay: below RMS threshold. Green: long enough for a track gap. Use refresh after changing silence settings. Select a track to preview from its marker.</property>
                         <child type="header-suffix">
                           <object class="GtkImage">
                             <property name="icon-name">audio-x-generic-symbolic</property>
@@ -221,9 +238,45 @@
                             <property name="propagate-natural-height">True</property>
                             <property name="child">
                               <object class="GtkListBox" id="track_list_box">
-                                <property name="selection-mode">none</property>
+                                <property name="selection-mode">single</property>
                               </object>
                             </property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="orientation">horizontal</property>
+                            <property name="spacing">8</property>
+                            <property name="margin-start">8</property>
+                            <property name="margin-end">8</property>
+                            <property name="margin-bottom">6</property>
+                            <property name="halign">start</property>
+                            <child>
+                              <object class="GtkButton" id="play_preview_button">
+                                <property name="tooltip-text" translatable="yes">Play selected track from its start marker</property>
+                                <property name="icon-name">media-playback-start-symbolic</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkButton" id="pause_preview_button">
+                                <property name="tooltip-text" translatable="yes">Pause preview (GStreamer only)</property>
+                                <property name="icon-name">media-playback-pause-symbolic</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkButton" id="stop_preview_button">
+                                <property name="tooltip-text" translatable="yes">Stop preview</property>
+                                <property name="icon-name">media-playback-stop-symbolic</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkLabel" id="preview_hint_label">
+                                <property name="label" translatable="yes">Select a track, then play.</property>
+                                <property name="margin-start">8</property>
+                                <property name="xalign">0</property>
+                                <style><class name="dim-label"/></style>
+                              </object>
+                            </child>
                           </object>
                         </child>
                       </object>

@@ -10,9 +10,10 @@ The image above is an **illustrative preview** of the layout (Libadwaita prefere
 
 ## Features
 
-- **Silence-based cueing** — configurable RMS threshold and minimum silence duration to match groove noise on your pressing.
+- **Silence-based cueing** — configurable RMS threshold and minimum silence duration to match groove noise on your pressing, plus a **minimum gap between suggested markers** (default **30 seconds**) so short pauses inside a song do not create extra boundaries. Tune the gap in the **Silence detection** group.
 - **Waveform analysis** — builds a peak envelope for the whole rip, estimates noise vs programme level, and **suggests** RMS threshold and minimum silence (applied to the spin buttons; tune manually if needed). After analyze, **initial track markers** are placed from silence detection. The drawing shows **visual feedback** for the current threshold (blue where RMS is below threshold, green where gaps meet minimum silence) and a dashed reference line versus peak level. **Refresh markers** re-runs detection when you change the silence spins.
-- **Track boundary CRUD** — after detection or analysis, edit **start/end** per track, **merge** with the next track, **remove** a track (merge with a neighbour), **double‑click the waveform** to insert a new cut, or **single‑click near a boundary** for a popover that maps **MusicBrainz lookup titles** to the tracks before and after that cut.
+- **MusicBrainz-aligned suggestions** — after a successful **Look up track titles**, **Detect tracks** and **Refresh markers from silence** pass the **number of titles** into detection so the suggested **track count** matches the listing when geometry allows (merging weak boundaries or splitting the longest spans if needed).
+- **Track boundary CRUD** — after detection or analysis, edit **start/end** per track, **merge** with the next track, **remove** a track (merge with a neighbour), **double‑click the waveform** to insert a new cut, or **single‑click near a boundary** for a popover that maps **MusicBrainz lookup titles** to the tracks before and after that cut. **Preview** — select a track in the list, then **Play** from its start marker; **Pause** works with **GStreamer** (GNOME runtime); **ffplay** from ffmpeg can be used as a play/stop-only fallback.
 - **MusicBrainz lookup** — enter artist and/or album; the app fetches a track list (rate-limited, descriptive User-Agent, no API key).
 - **Multi-format export** — enable any combination of FLAC (lossless), MP3 (LAME VBR), and PCM WAV per run.
 - **Library-style paths** — `{library}/{Artist}/{Album}/{NN} – {Title}.{ext}` with filesystem-safe names.
@@ -23,6 +24,7 @@ The image above is an **illustrative preview** of the layout (Libadwaita prefere
 
 - **Python 3**, **PyGObject**, **GTK 4**, **Libadwaita** (typical GNOME app stack).
 - **ffmpeg** on `PATH`. MP3 export needs **libmp3lame** in your ffmpeg build.
+- **Preview audio:** **GStreamer** (e.g. `gst-plugins-good`, `gst-libav` for WAV) is preferred for play/pause/stop; otherwise **`ffplay`** from the same ffmpeg install gives play/stop only (pause disabled).
 
 Flatpak/runtime images often need ffmpeg bundled or supplied via an extension; the stock GNOME runtime may not include every encoder.
 
@@ -63,6 +65,8 @@ from polyvinyl.core import (
 ```
 
 Install layout puts the package under the Meson `pkgdatadir` (e.g. `share/polyvinyl/polyvinyl/`); the launcher adds that path to `PYTHONPATH`.
+
+`detect_track_spans(..., min_split_gap_sec=30.0, target_track_count=None)` enforces a minimum time between suggested cuts and, when `target_track_count` is set, adjusts the number of spans to match (via `adjust_span_count_to_target` in `polyvinyl.core.segments`).
 
 ## License
 

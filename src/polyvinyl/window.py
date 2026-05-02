@@ -43,6 +43,7 @@ from polyvinyl.core import (
     track_filename,
     read_wav_file_info,
 )
+from polyvinyl.playback import WavPreviewPlayer
 
 
 def _ua(version: str) -> str:
@@ -59,6 +60,7 @@ class PolyvinylWindow(Adw.ApplicationWindow):
     album_row = Gtk.Template.Child()
     silence_row = Gtk.Template.Child()
     min_silence_row = Gtk.Template.Child()
+    min_split_gap_row = Gtk.Template.Child()
     log_buffer = Gtk.Template.Child()
     progress_bar = Gtk.Template.Child()
     lookup_button = Gtk.Template.Child()
@@ -75,6 +77,9 @@ class PolyvinylWindow(Adw.ApplicationWindow):
     open_output_button = Gtk.Template.Child()
     wav_info_button = Gtk.Template.Child()
     refresh_markers_button = Gtk.Template.Child()
+    play_preview_button = Gtk.Template.Child()
+    pause_preview_button = Gtk.Template.Child()
+    stop_preview_button = Gtk.Template.Child()
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -92,6 +97,8 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         self._rms_window_sec: float = 0.06
         self._marker_popover: Gtk.Popover | None = None
         self._popover_timer: int | None = None
+        self._selected_track_index: int | None = None
+        self._preview = WavPreviewPlayer(on_stopped=self._sync_preview_controls)
 
         app = self.get_application()
         self._app_version = getattr(app, 'version', None) or '0.1.0'
@@ -108,6 +115,13 @@ class PolyvinylWindow(Adw.ApplicationWindow):
 
         self.silence_row.get_adjustment().connect('value-changed', self._on_silence_params_changed)
         self.min_silence_row.get_adjustment().connect('value-changed', self._on_silence_params_changed)
+        self.min_split_gap_row.get_adjustment().connect('value-changed', self._on_silence_params_changed)
+
+        self.play_preview_button.connect('clicked', self._on_play_preview_clicked)
+        self.pause_preview_button.connect('clicked', self._on_pause_preview_clicked)
+        self.stop_preview_button.connect('clicked', self._on_stop_preview_clicked)
+        self.track_list_box.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self.track_list_box.connect('row-selected', self._on_track_row_selected)
 
         self.waveform_draw.set_draw_func(self._draw_waveform, None)
         self.waveform_draw.set_can_focus(True)
@@ -123,6 +137,68 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         self._sync_track_empty_label()
         self._sync_wav_info_sensitive()
         self._sync_refresh_markers_sensitive()
+        self._sync_preview_controls()
+        self.connect('destroy', lambda *_: self._preview.stop())
+
+    def _silence_detect_kwargs(self, dsp_backend: str | None = None) -> dict:
+        thr, min_sec = self._silence_params()
+        gap = float(self.min_split_gap_row.get_adjustment().get_value())
+        n = len(self._titles) if self._titles else 0
+        target = n if n >= 1 else None
+        return {
+            'silence_threshold_linear': thr,
+            'min_silence_sec': min_sec,
+            'min_split_gap_sec': gap,
+            'target_track_count': target,
+            'backend': dsp_backend,
+        }
+
+    def _sync_preview_controls(self, *_args) -> None:
+        have_wav = self._wav_path is not None
+        have_spans = bool(self._spans)
+        sel = self._selected_track_index
+        active = self._preview.is_active()
+        paused = self._preview.is_gst_paused()
+        can_pause = self._preview.can_pause() and active and not paused
+        self.play_preview_button.set_sensitive(
+            have_wav and have_spans and sel is not None and (not active or paused),
+        )
+        self.pause_preview_button.set_sensitive(can_pause)
+        self.stop_preview_button.set_sensitive(active)
+
+    def _on_track_row_selected(self, _list: Gtk.ListBox, row: Gtk.ListBoxRow | None) -> None:
+        if row is None:
+            self._selected_track_index = None
+        else:
+            self._selected_track_index = getattr(row, '_pv_index', None)
+        self._sync_preview_controls()
+
+    def _on_play_preview_clicked(self, *_args) -> None:
+        if not self._wav_path or not self._spans:
+            self._append_log(_('Open a WAV and define tracks before preview.'))
+            return
+        if self._preview.is_gst_paused():
+            self._preview.resume()
+            self._sync_preview_controls()
+            return
+        idx = self._selected_track_index
+        if idx is None or not (0 <= idx < len(self._spans)):
+            self._append_log(_('Select a track in the list to preview from its marker.'))
+            return
+        span = self._spans[idx]
+        if not self._preview.play(self._wav_path, span.start_sec, span.end_sec):
+            self._append_log(
+                _('Preview failed. Install GStreamer (e.g. gst-plugins-good) or put ffplay from ffmpeg on PATH.'),
+            )
+        self._sync_preview_controls()
+
+    def _on_pause_preview_clicked(self, *_args) -> None:
+        if self._preview.can_pause():
+            self._preview.pause()
+        self._sync_preview_controls()
+
+    def _on_stop_preview_clicked(self, *_args) -> None:
+        self._preview.stop()
 
     def _on_silence_params_changed(self, *_args) -> None:
         self.waveform_draw.queue_draw()
@@ -453,13 +529,10 @@ class PolyvinylWindow(Adw.ApplicationWindow):
     def _regenerate_spans_from_detection(self, *, quiet: bool = False) -> None:
         if not self._wav_path or self._duration_sec <= 0:
             return
-        thr, min_s = self._silence_params()
         try:
             spans = detect_track_spans(
                 str(self._wav_path),
-                silence_threshold_linear=thr,
-                min_silence_sec=min_s,
-                backend=dsp_prefs.configured_backend(),
+                **self._silence_detect_kwargs(dsp_prefs.configured_backend()),
             )
         except Exception as e:
             self._append_log(_('Could not refresh markers: {err}').format(err=e))
@@ -699,6 +772,13 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         self._append_log(_('Loaded {n} track titles from MusicBrainz.').format(n=len(self._titles)))
         for i, t in enumerate(self._titles, start=1):
             self._append_log(f'  {i:02d}. {t}')
+        if self._titles:
+            self._append_log(
+                _('Use “Detect tracks” or “Refresh markers from silence” to rebuild markers; '
+                  'the suggested track count will match these {n} titles when possible.').format(
+                    n=len(self._titles),
+                ),
+            )
 
     def _export_formats(self) -> list[ExportFormat]:
         fmts: list[ExportFormat] = []
@@ -722,17 +802,12 @@ class PolyvinylWindow(Adw.ApplicationWindow):
             return
         self._set_busy(True)
         wav = str(self._wav_path)
-        thr, min_sec = self._silence_params()
         dsp_backend = self._dsp_pref_for_workers()
+        detect_kw = self._silence_detect_kwargs(dsp_backend)
 
         def work():
             try:
-                spans = detect_track_spans(
-                    wav,
-                    silence_threshold_linear=thr,
-                    min_silence_sec=min_sec,
-                    backend=dsp_backend,
-                )
+                spans = detect_track_spans(wav, **detect_kw)
                 GLib.idle_add(self._detect_done, spans, None)
             except Exception as e:
                 GLib.idle_add(self._detect_done, None, str(e))
@@ -768,7 +843,10 @@ class PolyvinylWindow(Adw.ApplicationWindow):
             self.track_list_box.remove(row)
 
         if not self._spans:
+            self.track_list_box.unselect_all()
+            self._selected_track_index = None
             self._sync_track_empty_label()
+            self._sync_preview_controls()
             return
 
         self._updating_track_rows = True
@@ -778,9 +856,14 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         finally:
             self._updating_track_rows = False
         self._sync_track_empty_label()
+        first = self.track_list_box.get_row_at_index(0)
+        if first is not None:
+            self.track_list_box.select_row(first)
+        self._sync_preview_controls()
 
     def _make_track_row(self, index: int, span: TrackSpan) -> Gtk.ListBoxRow:
         row = Gtk.ListBoxRow()
+        row._pv_index = index  # type: ignore[attr-defined]
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         box.set_margin_start(10)
         box.set_margin_end(10)

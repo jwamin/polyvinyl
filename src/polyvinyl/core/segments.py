@@ -125,6 +125,49 @@ def set_span_range(spans: list[TrackSpan], index: int, start_sec: float, end_sec
     return normalize_spans(new, duration_sec)
 
 
+def adjust_span_count_to_target(
+    spans: list[TrackSpan],
+    target: int,
+    duration_sec: float,
+    *,
+    min_piece_sec: float = 0.05,
+) -> list[TrackSpan]:
+    """Increase or decrease the number of spans to ``target`` (>= 1).
+
+    When reducing, merges the pair of neighbours where the shorter of the two
+    tracks is smallest (drops the weakest boundary first). When increasing,
+    repeatedly splits the longest track at its midpoint until no segment is long
+    enough to split or ``target`` is reached.
+    """
+    if target < 1:
+        return normalize_spans(spans, duration_sec)
+    spans = normalize_spans(spans, duration_sec)
+    if not spans:
+        return [TrackSpan(0.0, duration_sec)] if duration_sec > min_piece_sec else []
+
+    while len(spans) > target:
+        best_i = 0
+        best_score = float('inf')
+        for i in range(len(spans) - 1):
+            len_i = spans[i].end_sec - spans[i].start_sec
+            len_j = spans[i + 1].end_sec - spans[i + 1].start_sec
+            score = min(len_i, len_j)
+            if score < best_score:
+                best_score = score
+                best_i = i
+        spans = merge_with_next(spans, best_i, duration_sec)
+
+    while len(spans) < target:
+        i = max(range(len(spans)), key=lambda k: spans[k].end_sec - spans[k].start_sec)
+        s = spans[i]
+        if s.end_sec - s.start_sec < 2 * min_piece_sec + 1e-6:
+            break
+        mid = (s.start_sec + s.end_sec) / 2.0
+        spans = split_span_at(spans, i, mid, duration_sec)
+
+    return normalize_spans(spans, duration_sec)
+
+
 def insert_cut(spans: list[TrackSpan], cut_sec: float, duration_sec: float) -> list[TrackSpan]:
     """Insert a boundary at ``cut_sec`` by splitting the containing track."""
     if not (0.0 < cut_sec < duration_sec):

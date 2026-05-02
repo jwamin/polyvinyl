@@ -5,10 +5,10 @@
   <project_license>MIT</project_license>
 
   <name>Polyvinyl</name>
-  <summary>Split vinyl WAV rips into FLAC with silence cues</summary>
+  <summary>Split vinyl WAV rips into tracks with silence cues and MusicBrainz metadata</summary>
   <description>
-    <p>Polyvinyl finds gaps between songs in a long WAV capture using silence detection, names tracks using the MusicBrainz catalog when you provide artist or album text, and writes numbered FLAC files under Artist / Album folders.</p>
-    <p>Lossless export uses ffmpeg; tune RMS threshold and minimum silence duration to match your pressing and stylus noise.</p>
+    <p>Polyvinyl finds gaps between songs in a long WAV capture using silence detection, suggests markers with a configurable minimum spacing (default 30 seconds), and can align the suggested track count with a MusicBrainz track listing after lookup.</p>
+    <p>Export FLAC, MP3, or WAV via ffmpeg; preview a selected track from its marker using GStreamer (or ffplay). Tune RMS threshold, minimum silence, and marker gap to match your pressing.</p>
   </description>
 
   <developer id="gnome.jwamin">
@@ -16,11 +16,11 @@
   </developer>
 
   <!-- Required: Should be a link to the upstream homepage for the component -->
-  <url type="homepage">https://example.org/</url>
+  <url type="homepage">https://github.com/jwamin/polyvinyl</url>
   <!-- Recommended: It is highly recommended for open-source projects to display the source code repository -->
-  <url type="vcs-browser">https://example.org/repository</url>
+  <url type="vcs-browser">https://github.com/jwamin/polyvinyl</url>
   <!-- Should point to the software's bug tracking system, for users to report new bugs -->
-  <url type="bugtracker">https://example.org/issues</url>
+  <url type="bugtracker">https://github.com/jwamin/polyvinyl/issues</url>
   <!-- Should link a FAQ page for this software, to answer some of the most-asked questions in detail -->
   <!-- URLs of this type should point to a webpage where users can submit or modify translations of the upstream project -->
   <url type="translate">https://example.org/translate</url>

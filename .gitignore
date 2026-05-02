@@ -1,0 +1,18 @@
+# Meson
+/build/
+/build-*/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.Python/
+
+# Flatpak
+.flatpak-builder/
+repo/
+
+# Editors / OS
+*~
+*.swp
+.DS_Store

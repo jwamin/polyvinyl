@@ -1,0 +1,370 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <requires lib="Adw" version="1.0"/>
+  <template class="PolyvinylWindow" parent="AdwApplicationWindow">
+    <property name="title" translatable="yes">Polyvinyl</property>
+    <property name="default-width">780</property>
+    <property name="default-height">720</property>
+    <property name="content">
+      <object class="AdwToolbarView">
+        <child type="top">
+          <object class="AdwHeaderBar">
+            <child type="start">
+              <object class="GtkImage">
+                <property name="icon-name">media-optical-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Vinyl / optical media rip</property>
+                <style><class name="icon-dropshadow"/></style>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkMenuButton">
+                <property name="primary">True</property>
+                <property name="icon-name">open-menu-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Main menu</property>
+                <property name="menu-model">primary_menu</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <property name="content">
+          <object class="GtkBox">
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkProgressBar" id="progress_bar">
+                <property name="pulse-step">0.02</property>
+                <property name="visible">False</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkScrolledWindow">
+                <property name="vexpand">false</property>
+                <property name="propagate-natural-height">True</property>
+                <property name="child">
+                  <object class="AdwPreferencesPage">
+                    <child>
+                      <object class="AdwPreferencesGroup">
+                        <property name="title" translatable="yes">Source</property>
+                        <property name="description" translatable="yes">PCM WAV from your vinyl capture</property>
+                        <child type="header-suffix">
+                          <object class="GtkImage">
+                            <property name="icon-name">folder-music-symbolic</property>
+                            <property name="tooltip-text" translatable="yes">Music library source</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwActionRow">
+                            <property name="icon-name">audio-x-generic-symbolic</property>
+                            <property name="title" translatable="yes">Rip file</property>
+                            <property name="subtitle" translatable="yes">16- or 24-bit WAV recommended</property>
+                            <child type="suffix">
+                              <object class="GtkBox">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">6</property>
+                                <child>
+                                  <object class="GtkLabel" id="wav_label">
+                                    <property name="label" translatable="yes">None selected</property>
+                                    <property name="wrap">True</property>
+                                    <property name="width-chars">28</property>
+                                    <property name="justify">right</property>
+                                    <style><class name="dim-label"/></style>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkButton">
+                                    <property name="valign">center</property>
+                                    <property name="tooltip-text" translatable="yes">Choose a WAV file</property>
+                                    <signal name="clicked" handler="on_open_wav_clicked" swapped="no"/>
+                                    <property name="child">
+                                      <object class="AdwButtonContent">
+                                        <property name="icon-name">document-open-symbolic</property>
+                                        <property name="label" translatable="yes">Open…</property>
+                                      </object>
+                                    </property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwPreferencesGroup">
+                        <property name="title" translatable="yes">Silence detection</property>
+                        <property name="description" translatable="yes">Tune to match groove noise on your pressing</property>
+                        <child type="header-suffix">
+                          <object class="GtkImage">
+                            <property name="icon-name">audio-volume-low-symbolic</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwSpinRow" id="silence_row">
+                            <property name="icon-name">audio-volume-muted-symbolic</property>
+                            <property name="title" translatable="yes">Silence RMS threshold</property>
+                            <property name="subtitle" translatable="yes">Energy below this fraction of full scale counts as silence</property>
+                            <property name="digits">3</property>
+                            <property name="adjustment">
+                              <object class="GtkAdjustment" id="silence_adjustment">
+                                <property name="lower">0.004</property>
+                                <property name="upper">0.15</property>
+                                <property name="value">0.018</property>
+                                <property name="step-increment">0.001</property>
+                                <property name="page-increment">0.01</property>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwSpinRow" id="min_silence_row">
+                            <property name="icon-name">alarm-symbolic</property>
+                            <property name="title" translatable="yes">Minimum silence</property>
+                            <property name="subtitle" translatable="yes">Seconds of quiet required to mark a track boundary</property>
+                            <property name="digits">2</property>
+                            <property name="adjustment">
+                              <object class="GtkAdjustment" id="min_silence_adjustment">
+                                <property name="lower">0.4</property>
+                                <property name="upper">5.0</property>
+                                <property name="value">1.35</property>
+                                <property name="step-increment">0.05</property>
+                                <property name="page-increment">0.25</property>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwPreferencesGroup">
+                        <property name="title" translatable="yes">MusicBrainz lookup</property>
+                        <property name="description" translatable="yes">Free metadata from musicbrainz.org — fill either field or both</property>
+                        <child type="header-suffix">
+                          <object class="GtkImage">
+                            <property name="icon-name">globe-symbolic</property>
+                            <property name="tooltip-text" translatable="yes">Online metadata</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwEntryRow" id="artist_row">
+                            <property name="title" translatable="yes">Artist</property>
+                            <child type="prefix">
+                              <object class="GtkImage">
+                                <property name="icon-name">avatar-default-symbolic</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwEntryRow" id="album_row">
+                            <property name="title" translatable="yes">Album</property>
+                            <child type="prefix">
+                              <object class="GtkImage">
+                                <property name="icon-name">media-optical-symbolic</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkButton" id="lookup_button">
+                            <property name="margin-top">6</property>
+                            <property name="halign">start</property>
+                            <property name="tooltip-text" translatable="yes">Search MusicBrainz for this album</property>
+                            <property name="child">
+                              <object class="AdwButtonContent">
+                                <property name="icon-name">system-search-symbolic</property>
+                                <property name="label" translatable="yes">Look up track titles</property>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwPreferencesGroup">
+                        <property name="title" translatable="yes">Output</property>
+                        <property name="description" translatable="yes">Enable one or more formats — each track is exported once per format into Artist / Album</property>
+                        <child type="header-suffix">
+                          <object class="GtkImage">
+                            <property name="icon-name">folder-download-symbolic</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwSwitchRow" id="export_flac_row">
+                            <property name="icon-name">package-x-generic-symbolic</property>
+                            <property name="title" translatable="yes">FLAC</property>
+                            <property name="subtitle" translatable="yes">Lossless compression</property>
+                            <property name="active">True</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwSwitchRow" id="export_mp3_row">
+                            <property name="icon-name">audio-headphones-symbolic</property>
+                            <property name="title" translatable="yes">MP3</property>
+                            <property name="subtitle" translatable="yes">LAME VBR (libmp3lame in ffmpeg)</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwSwitchRow" id="export_wav_row">
+                            <property name="icon-name">audio-card-symbolic</property>
+                            <property name="title" translatable="yes">WAV</property>
+                            <property name="subtitle" translatable="yes">16-bit PCM WAV</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwActionRow">
+                            <property name="icon-name">folder-symbolic</property>
+                            <property name="title" translatable="yes">Library folder</property>
+                            <property name="subtitle" translatable="yes">Creates Artist / Album / tracks</property>
+                            <child type="suffix">
+                              <object class="GtkBox">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">6</property>
+                                <child>
+                                  <object class="GtkLabel" id="output_label">
+                                    <property name="label" translatable="yes">None selected</property>
+                                    <property name="wrap">True</property>
+                                    <property name="width-chars">28</property>
+                                    <property name="justify">right</property>
+                                    <style><class name="dim-label"/></style>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkButton">
+                                    <property name="valign">center</property>
+                                    <property name="tooltip-text" translatable="yes">Choose destination folder</property>
+                                    <signal name="clicked" handler="on_open_output_clicked" swapped="no"/>
+                                    <property name="child">
+                                      <object class="AdwButtonContent">
+                                        <property name="icon-name">folder-open-symbolic</property>
+                                        <property name="label" translatable="yes">Choose…</property>
+                                      </object>
+                                    </property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwPreferencesGroup">
+                        <property name="title" translatable="yes">Actions</property>
+                        <child type="header-suffix">
+                          <object class="GtkImage">
+                            <property name="icon-name">applications-system-symbolic</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="spacing">12</property>
+                            <property name="margin-top">6</property>
+                            <property name="margin-bottom">6</property>
+                            <child>
+                              <object class="GtkButton" id="detect_button">
+                                <property name="tooltip-text" translatable="yes">Find tracks using silence detection</property>
+                                <property name="child">
+                                  <object class="AdwButtonContent">
+                                    <property name="icon-name">view-split-vertical-symbolic</property>
+                                    <property name="label" translatable="yes">Detect tracks</property>
+                                  </object>
+                                </property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkButton" id="split_button">
+                                <property name="tooltip-text" translatable="yes">Write audio files to the library folder</property>
+                                <style><class name="suggested-action"/></style>
+                                <property name="child">
+                                  <object class="AdwButtonContent">
+                                    <property name="icon-name">document-save-symbolic</property>
+                                    <property name="label" translatable="yes">Export tracks</property>
+                                  </object>
+                                </property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkFrame">
+                <property name="vexpand">True</property>
+                <property name="margin-start">12</property>
+                <property name="margin-end">12</property>
+                <property name="margin-bottom">12</property>
+                <property name="child">
+                  <object class="GtkBox">
+                    <property name="orientation">vertical</property>
+                    <child>
+                      <object class="GtkBox">
+                        <property name="orientation">horizontal</property>
+                        <property name="spacing">10</property>
+                        <property name="margin-start">14</property>
+                        <property name="margin-end">14</property>
+                        <property name="margin-top">10</property>
+                        <property name="margin-bottom">4</property>
+                        <child>
+                          <object class="GtkImage">
+                            <property name="icon-name">dialog-information-symbolic</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkLabel">
+                            <property name="label" translatable="yes">Activity log</property>
+                            <property name="xalign">0</property>
+                            <style><class name="heading"/></style>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkScrolledWindow">
+                        <property name="vexpand">True</property>
+                        <property name="min-content-height">160</property>
+                        <property name="child">
+                          <object class="GtkTextView">
+                            <property name="editable">False</property>
+                            <property name="cursor-visible">False</property>
+                            <property name="wrap-mode">word-char</property>
+                            <property name="left-margin">10</property>
+                            <property name="right-margin">10</property>
+                            <property name="top-margin">8</property>
+                            <property name="bottom-margin">8</property>
+                            <property name="buffer">
+                              <object class="GtkTextBuffer" id="log_buffer"/>
+                            </property>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+              </object>
+            </child>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+  <menu id="primary_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Preferences</attribute>
+        <attribute name="action">app.preferences</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Keyboard Shortcuts</attribute>
+        <attribute name="action">app.shortcuts</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_About Polyvinyl</attribute>
+        <attribute name="action">app.about</attribute>
+      </item>
+    </section>
+  </menu>
+</interface>

@@ -1,0 +1,8 @@
+# List of source files containing translatable strings.
+# Please keep this file sorted alphabetically.
+data/org.jossy.gnome.polyvinyl.desktop.in
+data/org.jossy.gnome.polyvinyl.metainfo.xml.in
+data/org.jossy.gnome.polyvinyl.gschema.xml
+src/polyvinyl/main.py
+src/polyvinyl/window.py
+src/window.ui

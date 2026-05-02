@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="polyvinyl">
+	<schema id="org.jossy.gnome.polyvinyl" path="/org/jossy/gnome/polyvinyl/">
+	</schema>
+</schemalist>

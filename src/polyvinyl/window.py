@@ -64,6 +64,7 @@ class PolyvinylWindow(Adw.ApplicationWindow):
     analyze_waveform_button = Gtk.Template.Child()
     waveform_draw = Gtk.Template.Child()
     track_list_box = Gtk.Template.Child()
+    track_list_empty_label = Gtk.Template.Child()
     open_wav_button = Gtk.Template.Child()
     open_output_button = Gtk.Template.Child()
 
@@ -99,6 +100,8 @@ class PolyvinylWindow(Adw.ApplicationWindow):
 
         if not find_ffmpeg():
             self._append_log(_('ffmpeg was not found in PATH; export will fail until it is installed.'))
+
+        self._sync_track_empty_label()
 
     def _append_log(self, line: str) -> None:
         end = self.log_buffer.get_end_iter()
@@ -385,6 +388,9 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         self._refresh_track_rows()
         self.waveform_draw.queue_draw()
 
+    def _sync_track_empty_label(self) -> None:
+        self.track_list_empty_label.set_visible(len(self._spans) == 0)
+
     def _refresh_track_rows(self) -> None:
         while True:
             row = self.track_list_box.get_row_at_index(0)
@@ -393,6 +399,7 @@ class PolyvinylWindow(Adw.ApplicationWindow):
             self.track_list_box.remove(row)
 
         if not self._spans:
+            self._sync_track_empty_label()
             return
 
         self._updating_track_rows = True
@@ -401,6 +408,7 @@ class PolyvinylWindow(Adw.ApplicationWindow):
                 self.track_list_box.append(self._make_track_row(i, span))
         finally:
             self._updating_track_rows = False
+        self._sync_track_empty_label()
 
     def _make_track_row(self, index: int, span: TrackSpan) -> Gtk.ListBoxRow:
         row = Gtk.ListBoxRow()

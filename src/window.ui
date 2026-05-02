@@ -163,6 +163,18 @@
                           </object>
                         </child>
                         <child>
+                          <object class="GtkLabel" id="track_list_empty_label">
+                            <property name="label" translatable="yes">No tracks yet — detect silence or insert cuts on the waveform.</property>
+                            <property name="margin-top">8</property>
+                            <property name="margin-bottom">8</property>
+                            <property name="margin-start">12</property>
+                            <property name="margin-end">12</property>
+                            <property name="justify">center</property>
+                            <property name="wrap">True</property>
+                            <style><class name="dim-label"/></style>
+                          </object>
+                        </child>
+                        <child>
                           <object class="GtkScrolledWindow">
                             <property name="vexpand">false</property>
                             <property name="min-content-height">160</property>
@@ -171,17 +183,6 @@
                             <property name="child">
                               <object class="GtkListBox" id="track_list_box">
                                 <property name="selection-mode">none</property>
-                                <property name="placeholder">
-                                  <object class="GtkLabel">
-                                    <property name="label" translatable="yes">No tracks yet — detect silence or insert cuts on the waveform.</property>
-                                    <property name="margin-top">16</property>
-                                    <property name="margin-bottom">16</property>
-                                    <property name="margin-start">12</property>
-                                    <property name="margin-end">12</property>
-                                    <property name="justify">center</property>
-                                    <style><class name="dim-label"/></style>
-                                  </object>
-                                </property>
                               </object>
                             </property>
                           </object>

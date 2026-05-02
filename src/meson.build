@@ -30,6 +30,7 @@ polyvinyl_pkg = files(
   'polyvinyl/__init__.py',
   'polyvinyl/main.py',
   'polyvinyl/window.py',
+  'polyvinyl/preferences.py',
 )
 
 polyvinyl_core = files(
@@ -41,7 +42,11 @@ polyvinyl_core = files(
   'polyvinyl/core/export.py',
   'polyvinyl/core/naming.py',
   'polyvinyl/core/wav_info.py',
+  'polyvinyl/core/dsp_prefs.py',
+  'polyvinyl/core/dsp_native.py',
 )
+
+subdir('dsp')
 
 install_data(polyvinyl_pkg, install_dir: moduledir)
 install_data(polyvinyl_core, install_dir: moduledir / 'core')

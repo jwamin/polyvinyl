@@ -17,6 +17,7 @@ The image above is an **illustrative preview** of the layout (Libadwaita prefere
 - **Multi-format export** — enable any combination of FLAC (lossless), MP3 (LAME VBR), and PCM WAV per run.
 - **Library-style paths** — `{library}/{Artist}/{Album}/{NN} – {Title}.{ext}` with filesystem-safe names.
 - **Reusable core** — `polyvinyl.core` has **no GTK dependency** (RMS/waveform analysis, silence detection, segment CRUD helpers, lookup, naming, ffmpeg-backed export) for scripts or future front ends.
+- **Native C DSP (optional)** — the same **RMS window series** and **waveform envelope** algorithms are implemented in **`libpolyvinyl_dsp`** (plain C99, no external audio deps) for **Linux** and **macOS** on **Intel and Apple silicon**. Meson builds the shared library and installs it next to the Python modules. **Preferences → General** (or the `dsp-backend` GSetting / `POLYVINYL_DSP_BACKEND` environment variable: `auto`, `python`, `native`) selects **Python**, **native C**, or **automatic** fallback when the library is missing.
 
 ## Requirements
 
@@ -34,7 +35,7 @@ sudo meson install -C build
 polyvinyl
 ```
 
-After `meson compile -C build`, bundled UI resources are emitted under `build/`; running from the install prefix (or Flatpak) is the most reliable way to exercise the full UI.
+After `meson compile -C build`, bundled UI resources are emitted under `build/`; running from the install prefix (or Flatpak) is the most reliable way to exercise the full UI. The C DSP library is built as `build/src/dsp/libpolyvinyl_dsp.so` (or `.dylib` on macOS); when running from a checkout without installing, set **`POLYVINYL_DSP_LIB`** to that path (or **`MESON_BUILD_ROOT`** so the loader checks `build/src/dsp/`) to try the native backend.
 
 ## Flatpak
 

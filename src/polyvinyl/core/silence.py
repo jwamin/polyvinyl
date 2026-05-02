@@ -67,15 +67,11 @@ def _rms_linear_mono(block: bytes, sampwidth: int, nchannels: int) -> float:
     return math.sqrt(acc / denom) / peak_scale
 
 
-def rms_window_series(
+def _rms_window_series_python(
     wav_path: str,
     *,
     window_ms: float = 60.0,
 ) -> tuple[list[float], list[float], float, int]:
-    """Scan the WAV file and return RMS per analysis window.
-
-    Returns ``(rms_linear_values, window_center_times_sec, duration_sec, frame_rate)``.
-    """
     if window_ms <= 0:
         raise ValueError("window_ms must be positive")
 
@@ -111,6 +107,27 @@ def rms_window_series(
         return rms_values, times_center, duration_sec, framerate
 
 
+def rms_window_series(
+    wav_path: str,
+    *,
+    window_ms: float = 60.0,
+    backend: str | None = None,
+) -> tuple[list[float], list[float], float, int]:
+    """Scan the WAV file and return RMS per analysis window.
+
+    Returns ``(rms_linear_values, window_center_times_sec, duration_sec, frame_rate)``.
+
+    ``backend`` may be ``'python'``, ``'native'``, ``'auto'``, or ``None`` (use settings / env).
+    """
+    from . import dsp_native
+    from .dsp_prefs import resolve_dsp_backend
+
+    use = resolve_dsp_backend(backend, native_available=dsp_native.is_available())
+    if use == "native":
+        return dsp_native.rms_window_series_native(wav_path, window_ms=window_ms)
+    return _rms_window_series_python(wav_path, window_ms=window_ms)
+
+
 def detect_track_spans(
     wav_path: str,
     *,
@@ -118,6 +135,7 @@ def detect_track_spans(
     min_silence_sec: float = 1.35,
     window_ms: float = 60.0,
     boundary_pad_sec: float = 0.05,
+    backend: str | None = None,
 ) -> list[TrackSpan]:
     """Find cue points from long silence regions between tracks.
 
@@ -137,7 +155,9 @@ def detect_track_spans(
     times_center: list[float]
     duration_sec: float
 
-    rms_values, times_center, duration_sec, framerate = rms_window_series(wav_path, window_ms=window_ms)
+    rms_values, times_center, duration_sec, framerate = rms_window_series(
+        wav_path, window_ms=window_ms, backend=backend
+    )
     silent_flags = [rms < silence_threshold_linear for rms in rms_values]
     nframes = int(round(duration_sec * framerate))
 

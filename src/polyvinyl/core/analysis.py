@@ -8,16 +8,11 @@ import struct
 import wave
 
 
-def compute_waveform_envelope(
+def _compute_waveform_envelope_python(
     wav_path: str,
     *,
     num_bins: int = 2048,
 ) -> tuple[list[float], float]:
-    """Peak envelope for drawing (one value per bin, normalized 0…1).
-
-    Returns ``(envelope, duration_sec)``. Mono signal uses absolute sample peak per bin;
-    multi-channel uses the max across channels per frame.
-    """
     if num_bins < 8:
         raise ValueError("num_bins too small")
 
@@ -82,6 +77,28 @@ def compute_waveform_envelope(
         m = max(envelope) or 1e-12
         envelope = [min(1.0, v / m) for v in envelope]
         return envelope, duration_sec
+
+
+def compute_waveform_envelope(
+    wav_path: str,
+    *,
+    num_bins: int = 2048,
+    backend: str | None = None,
+) -> tuple[list[float], float]:
+    """Peak envelope for drawing (one value per bin, normalized 0…1).
+
+    Returns ``(envelope, duration_sec)``. Mono signal uses absolute sample peak per bin;
+    multi-channel uses the max across channels per frame.
+
+    ``backend`` may be ``'python'``, ``'native'``, ``'auto'``, or ``None`` (use settings / env).
+    """
+    from . import dsp_native
+    from .dsp_prefs import resolve_dsp_backend
+
+    use = resolve_dsp_backend(backend, native_available=dsp_native.is_available())
+    if use == "native":
+        return dsp_native.compute_waveform_envelope_native(wav_path, num_bins=num_bins)
+    return _compute_waveform_envelope_python(wav_path, num_bins=num_bins)
 
 
 def suggest_silence_params(

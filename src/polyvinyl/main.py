@@ -31,6 +31,7 @@ gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 
 from gi.repository import Gtk, Gio, Adw
+from .preferences import show_preferences_window
 from .window import PolyvinylWindow
 
 
@@ -65,8 +66,9 @@ class PolyvinylApplication(Adw.Application):
                                            'detection and MusicBrainz metadata.'))
         about.present(self.props.active_window)
 
-    def on_preferences_action(self, _widget, __):
-        print('app.preferences action activated')
+    def on_preferences_action(self, *_args):
+        parent = self.props.active_window
+        show_preferences_window(parent if isinstance(parent, Gtk.Window) else None)
 
     def on_shortcuts_action(self, *_args):
         builder = Gtk.Builder.new_from_resource(

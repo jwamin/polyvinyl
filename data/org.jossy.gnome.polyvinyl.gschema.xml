@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist gettext-domain="polyvinyl">
 	<schema id="org.jossy.gnome.polyvinyl" path="/org/jossy/gnome/polyvinyl/">
+		<key name="dsp-backend" type="s">
+			<default>'auto'</default>
+			<summary>DSP implementation for waveform and silence analysis</summary>
+			<description>auto: prefer native C when libpolyvinyl_dsp is installed; python: pure Python; native: require the C library (falls back to Python if missing).</description>
+		</key>
 	</schema>
 </schemalist>

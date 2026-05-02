@@ -27,6 +27,8 @@ from polyvinyl.core import (
     compute_waveform_envelope,
     delete_track,
     detect_track_spans,
+    dsp_native,
+    dsp_prefs,
     encode_wav_segment,
     find_ffmpeg,
     insert_cut,
@@ -135,6 +137,15 @@ class PolyvinylWindow(Adw.ApplicationWindow):
             and bool(self._rms_values)
             and self._duration_sec > 0
         )
+
+    def _dsp_pref_for_workers(self) -> str:
+        b = dsp_prefs.configured_backend()
+        if b == 'native' and not dsp_native.is_available():
+            self._append_log(
+                _('Native DSP library not found; using Python for this run. '
+                  'Build or install libpolyvinyl_dsp next to the app modules, or set POLYVINYL_DSP_LIB.'),
+            )
+        return b
 
     def _append_log(self, line: str) -> None:
         end = self.log_buffer.get_end_iter()
@@ -448,6 +459,7 @@ class PolyvinylWindow(Adw.ApplicationWindow):
                 str(self._wav_path),
                 silence_threshold_linear=thr,
                 min_silence_sec=min_s,
+                backend=dsp_prefs.configured_backend(),
             )
         except Exception as e:
             self._append_log(_('Could not refresh markers: {err}').format(err=e))
@@ -581,11 +593,12 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         self._set_busy(True)
         path = str(self._wav_path)
         window_ms = 60.0
+        dsp_backend = self._dsp_pref_for_workers()
 
         def work():
             try:
-                env, dur = compute_waveform_envelope(path, num_bins=2048)
-                rms, times, duration, _sr = rms_window_series(path, window_ms=window_ms)
+                env, dur = compute_waveform_envelope(path, num_bins=2048, backend=dsp_backend)
+                rms, times, duration, _sr = rms_window_series(path, window_ms=window_ms, backend=dsp_backend)
                 thr, min_s, note = suggest_silence_params(
                     rms,
                     window_sec=window_ms / 1000.0,
@@ -710,6 +723,7 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         self._set_busy(True)
         wav = str(self._wav_path)
         thr, min_sec = self._silence_params()
+        dsp_backend = self._dsp_pref_for_workers()
 
         def work():
             try:
@@ -717,6 +731,7 @@ class PolyvinylWindow(Adw.ApplicationWindow):
                     wav,
                     silence_threshold_linear=thr,
                     min_silence_sec=min_sec,
+                    backend=dsp_backend,
                 )
                 GLib.idle_add(self._detect_done, spans, None)
             except Exception as e:

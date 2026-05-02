@@ -6,6 +6,8 @@ tests, or ports to other languages via the same algorithms.
 """
 
 from .analysis import compute_waveform_envelope, suggest_silence_params
+from . import dsp_native
+from .dsp_prefs import configured_backend, resolve_dsp_backend
 from .export import ExportFormat, encode_wav_segment, encode_wav_segment_flac, find_ffmpeg
 from .musicbrainz import ReleaseLookupError, lookup_track_titles, titles_for_span_count
 from .naming import album_output_dir, sanitize_path_component, track_filename
@@ -23,6 +25,9 @@ from .wav_info import WavFileInfo, read_wav_file_info
 
 __all__ = [
     "TrackSpan",
+    "dsp_native",
+    "configured_backend",
+    "resolve_dsp_backend",
     "detect_track_spans",
     "rms_window_series",
     "compute_waveform_envelope",

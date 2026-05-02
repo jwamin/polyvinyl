@@ -40,6 +40,7 @@ polyvinyl_core = files(
   'polyvinyl/core/musicbrainz.py',
   'polyvinyl/core/export.py',
   'polyvinyl/core/naming.py',
+  'polyvinyl/core/wav_info.py',
 )
 
 install_data(polyvinyl_pkg, install_dir: moduledir)

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import threading
 import wave
+from datetime import datetime
 from pathlib import Path
 
 from gettext import gettext as _
@@ -20,6 +21,7 @@ from polyvinyl.core import (
     ExportFormat,
     ReleaseLookupError,
     TrackSpan,
+    WavFileInfo,
     album_output_dir,
     compute_waveform_envelope,
     delete_track,
@@ -36,6 +38,7 @@ from polyvinyl.core import (
     suggest_silence_params,
     titles_for_span_count,
     track_filename,
+    read_wav_file_info,
 )
 
 
@@ -67,6 +70,7 @@ class PolyvinylWindow(Adw.ApplicationWindow):
     track_list_empty_label = Gtk.Template.Child()
     open_wav_button = Gtk.Template.Child()
     open_output_button = Gtk.Template.Child()
+    wav_info_button = Gtk.Template.Child()
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -84,6 +88,7 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         self._app_version = getattr(app, 'version', None) or '0.1.0'
 
         self.open_wav_button.connect('clicked', self._on_open_wav_clicked)
+        self.wav_info_button.connect('clicked', self._on_wav_info_clicked)
         self.open_output_button.connect('clicked', self._on_open_output_clicked)
         self.lookup_button.connect('clicked', self._on_lookup_clicked)
         self.detect_button.connect('clicked', self._on_detect_clicked)
@@ -102,6 +107,10 @@ class PolyvinylWindow(Adw.ApplicationWindow):
             self._append_log(_('ffmpeg was not found in PATH; export will fail until it is installed.'))
 
         self._sync_track_empty_label()
+        self._sync_wav_info_sensitive()
+
+    def _sync_wav_info_sensitive(self) -> None:
+        self.wav_info_button.set_sensitive(not self._busy and self._wav_path is not None)
 
     def _append_log(self, line: str) -> None:
         end = self.log_buffer.get_end_iter()
@@ -116,6 +125,7 @@ class PolyvinylWindow(Adw.ApplicationWindow):
             self.analyze_waveform_button,
         ):
             w.set_sensitive(not busy)
+        self._sync_wav_info_sensitive()
         self.progress_bar.set_visible(busy)
         if busy:
             self.progress_bar.pulse()
@@ -165,7 +175,114 @@ class PolyvinylWindow(Adw.ApplicationWindow):
             self._spans = []
             self._refresh_track_rows()
             self.waveform_draw.queue_draw()
+            self._sync_wav_info_sensitive()
             self._append_log(_('Source: {path}').format(path=path))
+
+    def _channel_summary_translated(self, info: WavFileInfo) -> str:
+        if info.channels == 1:
+            return _('Mono')
+        if info.channels == 2:
+            return _('Stereo')
+        return _('{n} channels').format(n=info.channels)
+
+    def _duration_summary_translated(self, seconds: float) -> str:
+        if seconds < 60:
+            return _('{sec:.2f} seconds').format(sec=seconds)
+        minutes, sec = divmod(seconds, 60.0)
+        if minutes < 60:
+            return _('{min:.0f} min {sec:.1f} s').format(min=minutes, sec=sec)
+        hours, minutes = divmod(minutes, 60.0)
+        return _('{hr:.0f} h {min:.0f} min {sec:.1f} s').format(hr=hours, min=minutes, sec=sec)
+
+    def _build_wav_info_text(self, info: WavFileInfo) -> str:
+        lines: list[str] = []
+        lines.append(_('File name: {name}').format(name=info.path.name))
+        lines.append(_('Full path: {path}').format(path=str(info.path)))
+
+        sz = info.file_size_bytes
+        if sz >= 1024 * 1024:
+            lines.append(
+                _('Size on disk: {mb:.2f} MiB ({bytes:,} bytes)').format(mb=sz / (1024 * 1024), bytes=sz))
+        else:
+            lines.append(_('Size on disk: {kb:.1f} KiB ({bytes:,} bytes)').format(kb=sz / 1024, bytes=sz))
+
+        if info.file_modified_timestamp is not None:
+            dt = datetime.fromtimestamp(info.file_modified_timestamp)
+            lines.append(_('Last modified: {when}').format(when=dt.strftime('%c')))
+
+        lines.append(
+            _('Channels: {n} ({layout})').format(
+                n=info.channels,
+                layout=self._channel_summary_translated(info),
+            )
+        )
+        lines.append(_('Sample rate: {rate:,} Hz').format(rate=info.sample_rate_hz))
+        lines.append(_('Bit depth: {bits} bit').format(bits=info.bits_per_sample))
+        if info.compression_type == 'NONE':
+            lines.append(_('Compression: PCM (uncompressed)'))
+        else:
+            lines.append(
+                _('Compression: {kind} ({detail})').format(
+                    kind=info.compression_type,
+                    detail=info.compression_name,
+                )
+            )
+
+        lines.append(
+            _('Duration: {sec:.3f} s ({human})').format(
+                sec=info.duration_sec,
+                human=self._duration_summary_translated(info.duration_sec),
+            )
+        )
+
+        kbps = info.pcm_bitrate_bps // 1000
+        lines.append(
+            _('PCM bitrate (calculated): {kbps} kb/s').format(kbps=kbps),
+        )
+
+        approx_pcm = info.frame_count * info.channels * info.sample_width_bytes
+        lines.append(_('Audio payload (approx.): {bytes:,} bytes').format(bytes=approx_pcm))
+        lines.append(_('Sample frames: {frames:,}').format(frames=info.frame_count))
+
+        if info.compression_type != 'NONE':
+            lines.append(_('Note: Only uncompressed PCM is fully supported for splitting.'))
+
+        return '\n'.join(lines)
+
+    def _on_wav_info_clicked(self, *_args) -> None:
+        if not self._wav_path:
+            return
+        try:
+            info = read_wav_file_info(self._wav_path)
+        except wave.Error as e:
+            self._append_log(_('Could not read WAV metadata: {err}').format(err=e))
+            err_dlg = Adw.AlertDialog(
+                heading=_('Invalid WAV'),
+                body=_('This file could not be parsed as a WAV container.\n{err}').format(err=e),
+            )
+            err_dlg.add_response('close', _('_Close'))
+            err_dlg.set_default_response('close')
+            err_dlg.set_close_response('close')
+            err_dlg.present(self)
+            return
+        except OSError as e:
+            self._append_log(_('Could not read file: {err}').format(err=e))
+            return
+
+        detail = self._build_wav_info_text(info)
+        label = Gtk.Label(label=detail, selectable=True, wrap=True, xalign=0)
+        label.add_css_class('monospace')
+        label.set_width_chars(52)
+
+        dlg = Adw.AlertDialog(
+            heading=_('Rip file information'),
+            body=_('Details from the WAV header and file timestamps (select text to copy).'),
+        )
+        dlg.set_extra_child(label)
+        dlg.add_response('close', _('_Close'))
+        dlg.set_default_response('close')
+        dlg.set_close_response('close')
+        dlg.present(self)
 
     def _on_open_output_clicked(self, *_args):
         dialog = Gtk.FileDialog(title=_('Output folder'))

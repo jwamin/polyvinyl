@@ -19,6 +19,7 @@ from .segments import (
     split_span_at,
 )
 from .silence import TrackSpan, detect_track_spans, rms_window_series
+from .wav_info import WavFileInfo, read_wav_file_info
 
 __all__ = [
     "TrackSpan",
@@ -43,4 +44,6 @@ __all__ = [
     "delete_track",
     "insert_cut",
     "set_span_range",
+    "WavFileInfo",
+    "read_wav_file_info",
 ]

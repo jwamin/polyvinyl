@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import bisect
 import threading
 import wave
 from datetime import datetime
@@ -13,7 +14,7 @@ from pathlib import Path
 
 from gettext import gettext as _
 
-from gi.repository import Adw, Gtk, Gio, GLib, Pango, PangoCairo
+from gi.repository import Adw, Gtk, Gio, GLib, Graphene, Pango, PangoCairo
 
 import cairo
 
@@ -71,6 +72,7 @@ class PolyvinylWindow(Adw.ApplicationWindow):
     open_wav_button = Gtk.Template.Child()
     open_output_button = Gtk.Template.Child()
     wav_info_button = Gtk.Template.Child()
+    refresh_markers_button = Gtk.Template.Child()
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -83,6 +85,11 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         self._duration_sec: float = 0.0
         self._envelope: list[float] = []
         self._updating_track_rows = False
+        self._rms_values: list[float] = []
+        self._rms_times: list[float] = []
+        self._rms_window_sec: float = 0.06
+        self._marker_popover: Gtk.Popover | None = None
+        self._popover_timer: int | None = None
 
         app = self.get_application()
         self._app_version = getattr(app, 'version', None) or '0.1.0'
@@ -94,6 +101,11 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         self.detect_button.connect('clicked', self._on_detect_clicked)
         self.split_button.connect('clicked', self._on_split_clicked)
         self.analyze_waveform_button.connect('clicked', self._on_analyze_waveform_clicked)
+        self.refresh_markers_button.connect('clicked', self._on_refresh_markers_clicked)
+        self.refresh_markers_button.set_sensitive(False)
+
+        self.silence_row.get_adjustment().connect('value-changed', self._on_silence_params_changed)
+        self.min_silence_row.get_adjustment().connect('value-changed', self._on_silence_params_changed)
 
         self.waveform_draw.set_draw_func(self._draw_waveform, None)
         self.waveform_draw.set_can_focus(True)
@@ -108,9 +120,21 @@ class PolyvinylWindow(Adw.ApplicationWindow):
 
         self._sync_track_empty_label()
         self._sync_wav_info_sensitive()
+        self._sync_refresh_markers_sensitive()
+
+    def _on_silence_params_changed(self, *_args) -> None:
+        self.waveform_draw.queue_draw()
 
     def _sync_wav_info_sensitive(self) -> None:
         self.wav_info_button.set_sensitive(not self._busy and self._wav_path is not None)
+
+    def _sync_refresh_markers_sensitive(self) -> None:
+        self.refresh_markers_button.set_sensitive(
+            not self._busy
+            and self._wav_path is not None
+            and bool(self._rms_values)
+            and self._duration_sec > 0
+        )
 
     def _append_log(self, line: str) -> None:
         end = self.log_buffer.get_end_iter()
@@ -123,9 +147,11 @@ class PolyvinylWindow(Adw.ApplicationWindow):
             self.detect_button,
             self.split_button,
             self.analyze_waveform_button,
+            self.refresh_markers_button,
         ):
             w.set_sensitive(not busy)
         self._sync_wav_info_sensitive()
+        self._sync_refresh_markers_sensitive()
         self.progress_bar.set_visible(busy)
         if busy:
             self.progress_bar.pulse()
@@ -176,6 +202,9 @@ class PolyvinylWindow(Adw.ApplicationWindow):
             self._refresh_track_rows()
             self.waveform_draw.queue_draw()
             self._sync_wav_info_sensitive()
+            self._rms_values = []
+            self._rms_times = []
+            self._sync_refresh_markers_sensitive()
             self._append_log(_('Source: {path}').format(path=path))
 
     def _channel_summary_translated(self, info: WavFileInfo) -> str:
@@ -299,6 +328,145 @@ class PolyvinylWindow(Adw.ApplicationWindow):
             self.output_label.set_label(path)
             self._append_log(_('Output root: {path}').format(path=path))
 
+    def _rms_at_time(self, t: float) -> float:
+        if not self._rms_times or not self._rms_values:
+            return 0.0
+        i = bisect.bisect_left(self._rms_times, t)
+        if i <= 0:
+            return self._rms_values[0]
+        if i >= len(self._rms_values):
+            return self._rms_values[-1]
+        t0, t1 = self._rms_times[i - 1], self._rms_times[i]
+        if t1 - t0 < 1e-12:
+            return self._rms_values[i]
+        w = (t - t0) / (t1 - t0)
+        return self._rms_values[i - 1] * (1.0 - w) + self._rms_values[i] * w
+
+    def _cancel_popover_timer(self) -> None:
+        if self._popover_timer is not None:
+            GLib.source_remove(self._popover_timer)
+            self._popover_timer = None
+
+    def _dismiss_marker_popover(self) -> None:
+        self._cancel_popover_timer()
+        if self._marker_popover is not None:
+            self._marker_popover.popdown()
+            self._marker_popover = None
+
+    def _on_marker_popover_closed(self, pop: Gtk.Popover) -> None:
+        if self._marker_popover is pop:
+            self._marker_popover = None
+
+    def _defer_marker_popover(self, x: float, y: float) -> bool:
+        self._popover_timer = None
+        self._maybe_show_marker_popover(x, y)
+        return GLib.SOURCE_REMOVE
+
+    def _maybe_show_marker_popover(self, x: float, y: float) -> None:
+        if not self._spans or len(self._spans) < 2 or self._duration_sec <= 0:
+            return
+        w = float(self.waveform_draw.get_width())
+        h = float(self.waveform_draw.get_height())
+        if w <= 0:
+            return
+        cuts = internal_cut_times(self._spans)
+        tol = max(8.0, w * 0.012)
+        best_i: int | None = None
+        best_d = tol + 1.0
+        for i, ct in enumerate(cuts):
+            px = (ct / self._duration_sec) * (w - 1)
+            d = abs(px - x)
+            if d < best_d:
+                best_d = d
+                best_i = i
+        if best_i is None or best_d > tol:
+            return
+
+        names = titles_for_span_count(self._titles, len(self._spans))
+        left = names[best_i]
+        right = names[best_i + 1]
+        t_sec = cuts[best_i]
+        body = _(
+            'Marker at {time:.2f} s\n\nBefore: track {n1}: {left}\nAfter: track {n2}: {right}'
+        ).format(
+            time=t_sec,
+            n1=best_i + 1,
+            left=left,
+            n2=best_i + 2,
+            right=right,
+        )
+
+        self._dismiss_marker_popover()
+        pop = Gtk.Popover()
+        pop.set_parent(self.waveform_draw)
+        pop.set_autohide(True)
+        pop.connect('closed', self._on_marker_popover_closed)
+        lbl = Gtk.Label(label=body, wrap=True, xalign=0, max_width_chars=40)
+        lbl.set_margin_top(10)
+        lbl.set_margin_bottom(10)
+        lbl.set_margin_start(12)
+        lbl.set_margin_end(12)
+        pop.set_child(lbl)
+
+        rect = Graphene.Rect()
+        rect.init(max(0.0, x - 6), max(0.0, y - 6), 12.0, max(12.0, h * 0.2))
+        pop.set_pointing_to(rect)
+        pop.popup()
+        self._marker_popover = pop
+
+    def _insert_cut_at_pixel(self, x: float) -> None:
+        if not self._wav_path or self._duration_sec <= 0:
+            self._append_log(_('Open a WAV and run waveform analysis before adding cuts.'))
+            return
+        if not self._envelope:
+            self._append_log(_('Run waveform analysis first so the timeline matches the file.'))
+            return
+        w = float(self.waveform_draw.get_width())
+        if w <= 0:
+            return
+        t = max(0.0, min(self._duration_sec, (x / w) * self._duration_sec))
+        if t <= 0.02 or t >= self._duration_sec - 0.02:
+            return
+        try:
+            if not self._spans:
+                self._spans = normalize_spans([TrackSpan(0.0, self._duration_sec)], self._duration_sec)
+            self._spans = insert_cut(self._spans, t, self._duration_sec)
+        except ValueError as e:
+            self._append_log(_('Could not add cut: {err}').format(err=e))
+            return
+        self._dismiss_marker_popover()
+        self._refresh_track_rows()
+        self.waveform_draw.queue_draw()
+        self._append_log(_('Inserted boundary at {t:.2f}s').format(t=t))
+
+    def _regenerate_spans_from_detection(self, *, quiet: bool = False) -> None:
+        if not self._wav_path or self._duration_sec <= 0:
+            return
+        thr, min_s = self._silence_params()
+        try:
+            spans = detect_track_spans(
+                str(self._wav_path),
+                silence_threshold_linear=thr,
+                min_silence_sec=min_s,
+            )
+        except Exception as e:
+            self._append_log(_('Could not refresh markers: {err}').format(err=e))
+            return
+        if spans:
+            d = spans[-1].end_sec
+            if d > 0:
+                self._duration_sec = d
+                spans = normalize_spans(spans, d)
+        self._spans = spans
+        self._dismiss_marker_popover()
+        self._refresh_track_rows()
+        self.waveform_draw.queue_draw()
+        if not quiet:
+            self._append_log(_('Markers updated ({n} tracks).').format(n=len(spans)))
+
+    def _on_refresh_markers_clicked(self, *_args) -> None:
+        self._regenerate_spans_from_detection()
+
     def _draw_waveform(self, area: Gtk.DrawingArea, cr: cairo.Context, width: int, height: int, _data) -> None:
         cr.save()
         cr.rectangle(0, 0, width, height)
@@ -322,8 +490,55 @@ class PolyvinylWindow(Adw.ApplicationWindow):
 
         mid = height / 2.0
         scale = max(4.0, mid - 8.0)
+        dur = self._duration_sec
+        thr = float(self.silence_row.get_adjustment().get_value())
+        min_s = float(self.min_silence_row.get_adjustment().get_value())
+
+        if self._rms_values and dur > 0 and width > 0:
+            silent_px = [False] * width
+            for px in range(width):
+                t = (px + 0.5) / max(1, width) * dur
+                silent_px[px] = self._rms_at_time(t) < thr
+            sec_per_px = dur / max(1, width)
+            gap_px = [False] * width
+            px = 0
+            while px < width:
+                if not silent_px[px]:
+                    px += 1
+                    continue
+                j = px
+                while j < width and silent_px[j]:
+                    j += 1
+                if (j - px) * sec_per_px >= min_s:
+                    for k in range(px, j):
+                        gap_px[k] = True
+                px = j
+
+            cr.set_source_rgba(0.25, 0.55, 0.35, 0.35)
+            for px in range(width):
+                if gap_px[px]:
+                    cr.rectangle(px, 0, 1, height)
+            cr.fill()
+
+            cr.set_source_rgba(0.2, 0.35, 0.65, 0.22)
+            for px in range(width):
+                if silent_px[px] and not gap_px[px]:
+                    cr.rectangle(px, 0, 1, height)
+            cr.fill()
+
+            peak_rms = max(self._rms_values) or 1e-9
+            frac = min(1.0, max(0.0, thr / peak_rms))
+            y_line = mid - frac * scale
+            cr.set_source_rgba(0.85, 0.85, 0.9, 0.55)
+            cr.set_dash([4.0, 3.0])
+            cr.set_line_width(1.0)
+            cr.move_to(0, y_line)
+            cr.line_to(width, y_line)
+            cr.stroke()
+            cr.set_dash([])
+
         n = len(self._envelope)
-        cr.set_source_rgba(0.42, 0.55, 0.78, 0.85)
+        cr.set_source_rgba(0.42, 0.55, 0.78, 0.88)
         cr.move_to(0, mid)
         for i, v in enumerate(self._envelope):
             x = (i / max(1, n - 1)) * (width - 1)
@@ -332,11 +547,11 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         cr.close_path()
         cr.fill()
 
-        if self._duration_sec > 0 and self._spans:
+        if dur > 0 and self._spans:
             cr.set_source_rgba(0.95, 0.65, 0.15, 0.95)
             cr.set_line_width(1.5)
             for t in internal_cut_times(self._spans):
-                x = (t / self._duration_sec) * (width - 1)
+                x = (t / dur) * (width - 1)
                 cr.move_to(x, 0)
                 cr.line_to(x, height)
                 cr.stroke()
@@ -344,30 +559,19 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         cr.restore()
 
     def _on_waveform_pressed(self, gesture: Gtk.GestureClick, n_press: int, x: float, y: float) -> None:
-        if n_press != 2:
+        if not self._envelope or self._duration_sec <= 0:
             return
-        if not self._wav_path or self._duration_sec <= 0:
-            self._append_log(_('Open a WAV and run waveform analysis before adding cuts.'))
+        if n_press == 2:
+            self._cancel_popover_timer()
+            self._dismiss_marker_popover()
+            self._insert_cut_at_pixel(x)
             return
-        if not self._envelope:
-            self._append_log(_('Run waveform analysis first so the timeline matches the file.'))
-            return
-        w = float(self.waveform_draw.get_width())
-        if w <= 0:
-            return
-        t = max(0.0, min(self._duration_sec, (x / w) * self._duration_sec))
-        if t <= 0.02 or t >= self._duration_sec - 0.02:
-            return
-        try:
-            if not self._spans:
-                self._spans = normalize_spans([TrackSpan(0.0, self._duration_sec)], self._duration_sec)
-            self._spans = insert_cut(self._spans, t, self._duration_sec)
-        except ValueError as e:
-            self._append_log(_('Could not add cut: {err}').format(err=e))
-            return
-        self._refresh_track_rows()
-        self.waveform_draw.queue_draw()
-        self._append_log(_('Inserted boundary at {t:.2f}s').format(t=t))
+        if n_press == 1:
+            self._cancel_popover_timer()
+            self._popover_timer = GLib.timeout_add(
+                320,
+                lambda x=x, y=y: self._defer_marker_popover(float(x), float(y)),
+            )
 
     def _on_analyze_waveform_clicked(self, *_args):
         if self._busy or not self._wav_path:
@@ -381,37 +585,70 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         def work():
             try:
                 env, dur = compute_waveform_envelope(path, num_bins=2048)
-                rms, _times, duration, _sr = rms_window_series(path, window_ms=window_ms)
+                rms, times, duration, _sr = rms_window_series(path, window_ms=window_ms)
                 thr, min_s, note = suggest_silence_params(
                     rms,
                     window_sec=window_ms / 1000.0,
                     duration_sec=duration,
                 )
-                GLib.idle_add(self._analyze_done, env, dur, thr, min_s, note, None)
+                rms_copy = list(rms)
+                times_copy = list(times)
+                wsec = window_ms / 1000.0
+
+                def apply_ok():
+                    self._analyze_done(env, duration, thr, min_s, note, rms_copy, times_copy, wsec, None)
+                    return False
+
+                GLib.idle_add(apply_ok)
             except Exception as e:
-                GLib.idle_add(self._analyze_done, None, 0.0, None, None, None, str(e))
+
+                def apply_err():
+                    self._analyze_done(None, 0.0, None, None, None, None, None, 0.0, str(e))
+                    return False
+
+                GLib.idle_add(apply_err)
 
         threading.Thread(target=work, daemon=True).start()
 
-    def _analyze_done(self, envelope, duration_sec, thr, min_s, note, err):
+    def _analyze_done(
+        self,
+        envelope,
+        duration_sec,
+        thr,
+        min_s,
+        note,
+        rms_values,
+        rms_times,
+        rms_window_sec,
+        err,
+    ):
         self._set_busy(False)
         if err:
             self._append_log(_('Waveform analysis failed: {err}').format(err=err))
             return
         assert envelope is not None and thr is not None and min_s is not None
+        assert rms_values is not None and rms_times is not None
         self._envelope = envelope
         self._duration_sec = duration_sec
+        self._rms_values = rms_values
+        self._rms_times = rms_times
+        self._rms_window_sec = float(rms_window_sec)
         self.silence_row.get_adjustment().set_value(
             max(self.silence_row.get_adjustment().get_lower(),
                 min(self.silence_row.get_adjustment().get_upper(), thr)))
         self.min_silence_row.get_adjustment().set_value(
             max(self.min_silence_row.get_adjustment().get_lower(),
                 min(self.min_silence_row.get_adjustment().get_upper(), min_s)))
+        self._sync_refresh_markers_sensitive()
+        self._regenerate_spans_from_detection(quiet=True)
         self.waveform_draw.queue_draw()
         self._append_log(_('Suggested silence RMS threshold: {t:.4f}').format(t=thr))
         self._append_log(_('Suggested minimum silence: {s:.2f}s').format(s=min_s))
         if note:
             self._append_log(note)
+        self._append_log(
+            _('Initial markers from silence detection ({n} tracks).').format(n=len(self._spans)),
+        )
 
     def _on_lookup_clicked(self, *_args):
         if self._busy:

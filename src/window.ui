@@ -164,7 +164,7 @@
                     <child>
                       <object class="AdwPreferencesGroup">
                         <property name="title" translatable="yes">Waveform and track boundaries</property>
-                        <property name="description" translatable="yes">Double-click the waveform to insert a cut. Edit times below or merge neighbouring tracks.</property>
+                        <property name="description" translatable="yes">Single-click a marker for lookup titles. Double-click inserts a cut. Blue overlay: below RMS threshold. Green: long enough for a track gap. Use refresh after changing silence settings.</property>
                         <child type="header-suffix">
                           <object class="GtkImage">
                             <property name="icon-name">audio-x-generic-symbolic</property>
@@ -172,9 +172,33 @@
                         </child>
                         <child>
                           <object class="GtkDrawingArea" id="waveform_draw">
-                            <property name="height-request">150</property>
+                            <property name="height-request">170</property>
                             <property name="margin-top">4</property>
                             <property name="margin-bottom">4</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="waveform_legend_label">
+                            <property name="label" translatable="yes">Blue tint: RMS under threshold. Green tint: gap ≥ minimum silence. Orange lines: markers. Single-click marker: titles. Double-click: new cut.</property>
+                            <property name="margin-start">8</property>
+                            <property name="margin-end">8</property>
+                            <property name="margin-bottom">4</property>
+                            <property name="wrap">True</property>
+                            <property name="xalign">0</property>
+                            <style><class name="dim-label"/></style>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkButton" id="refresh_markers_button">
+                            <property name="halign">start</property>
+                            <property name="margin-bottom">6</property>
+                            <property name="tooltip-text" translatable="yes">Re-run silence detection with the current threshold and minimum silence</property>
+                            <property name="child">
+                              <object class="AdwButtonContent">
+                                <property name="icon-name">view-refresh-symbolic</property>
+                                <property name="label" translatable="yes">Refresh markers from silence</property>
+                              </object>
+                            </property>
                           </object>
                         </child>
                         <child>

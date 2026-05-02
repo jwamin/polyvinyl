@@ -11,8 +11,8 @@ The image above is an **illustrative preview** of the layout (Libadwaita prefere
 ## Features
 
 - **Silence-based cueing** — configurable RMS threshold and minimum silence duration to match groove noise on your pressing.
-- **Waveform analysis** — builds a peak envelope for the whole rip, estimates noise vs programme level, and **suggests** RMS threshold and minimum silence (applied to the spin buttons; tune manually if needed).
-- **Track boundary CRUD** — after detection or analysis, edit **start/end** per track, **merge** with the next track, **remove** a track (merge with a neighbour), or **double‑click the waveform** to insert a new cut.
+- **Waveform analysis** — builds a peak envelope for the whole rip, estimates noise vs programme level, and **suggests** RMS threshold and minimum silence (applied to the spin buttons; tune manually if needed). After analyze, **initial track markers** are placed from silence detection. The drawing shows **visual feedback** for the current threshold (blue where RMS is below threshold, green where gaps meet minimum silence) and a dashed reference line versus peak level. **Refresh markers** re-runs detection when you change the silence spins.
+- **Track boundary CRUD** — after detection or analysis, edit **start/end** per track, **merge** with the next track, **remove** a track (merge with a neighbour), **double‑click the waveform** to insert a new cut, or **single‑click near a boundary** for a popover that maps **MusicBrainz lookup titles** to the tracks before and after that cut.
 - **MusicBrainz lookup** — enter artist and/or album; the app fetches a track list (rate-limited, descriptive User-Agent, no API key).
 - **Multi-format export** — enable any combination of FLAC (lossless), MP3 (LAME VBR), and PCM WAV per run.
 - **Library-style paths** — `{library}/{Artist}/{Album}/{NN} – {Title}.{ext}` with filesystem-safe names.

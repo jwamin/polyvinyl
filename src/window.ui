@@ -4,7 +4,6 @@
   <requires lib="Adw" version="1.0"/>
   <template class="PolyvinylWindow" parent="AdwApplicationWindow">
     <property name="title" translatable="yes">Polyvinyl</property>
-    <property name="default-width">780</property>
     <property name="default-height">720</property>
     <property name="content">
       <object class="AdwToolbarView">
@@ -30,6 +29,8 @@
         <property name="content">
           <object class="GtkBox">
             <property name="orientation">vertical</property>
+            <property name="hexpand">True</property>
+            <property name="vexpand">True</property>
             <child>
               <object class="GtkProgressBar" id="progress_bar">
                 <property name="pulse-step">0.02</property>
@@ -38,7 +39,8 @@
             </child>
             <child>
               <object class="GtkScrolledWindow">
-                <property name="vexpand">false</property>
+                <property name="hexpand">True</property>
+                <property name="vexpand">True</property>
                 <property name="propagate-natural-height">True</property>
                 <property name="child">
                   <object class="AdwPreferencesPage">
@@ -61,11 +63,14 @@
                               <object class="GtkBox">
                                 <property name="orientation">vertical</property>
                                 <property name="spacing">6</property>
+                                <property name="hexpand">True</property>
                                 <child>
                                   <object class="GtkLabel" id="wav_label">
                                     <property name="label" translatable="yes">None selected</property>
                                     <property name="wrap">True</property>
-                                    <property name="width-chars">28</property>
+                                    <property name="wrap-mode">word-char</property>
+                                    <property name="hexpand">True</property>
+                                    <property name="xalign">1</property>
                                     <property name="justify">right</property>
                                     <style><class name="dim-label"/></style>
                                   </object>
@@ -190,6 +195,7 @@
                         <child>
                           <object class="GtkDrawingArea" id="waveform_draw">
                             <property name="height-request">170</property>
+                            <property name="hexpand">True</property>
                             <property name="margin-top">4</property>
                             <property name="margin-bottom">4</property>
                           </object>
@@ -232,9 +238,9 @@
                         </child>
                         <child>
                           <object class="GtkScrolledWindow">
-                            <property name="vexpand">false</property>
+                            <property name="hexpand">True</property>
+                            <property name="vexpand">True</property>
                             <property name="min-content-height">160</property>
-                            <property name="max-content-height">260</property>
                             <property name="propagate-natural-height">True</property>
                             <property name="child">
                               <object class="GtkListBox" id="track_list_box">
@@ -247,10 +253,11 @@
                           <object class="GtkBox">
                             <property name="orientation">horizontal</property>
                             <property name="spacing">8</property>
+                            <property name="hexpand">True</property>
                             <property name="margin-start">8</property>
                             <property name="margin-end">8</property>
                             <property name="margin-bottom">6</property>
-                            <property name="halign">start</property>
+                            <property name="halign">fill</property>
                             <child>
                               <object class="GtkButton" id="play_preview_button">
                                 <property name="tooltip-text" translatable="yes">Play selected track from its start marker</property>
@@ -273,6 +280,7 @@
                               <object class="GtkLabel" id="preview_hint_label">
                                 <property name="label" translatable="yes">Select a track, then play.</property>
                                 <property name="margin-start">8</property>
+                                <property name="hexpand">True</property>
                                 <property name="xalign">0</property>
                                 <style><class name="dim-label"/></style>
                               </object>
@@ -366,11 +374,14 @@
                               <object class="GtkBox">
                                 <property name="orientation">vertical</property>
                                 <property name="spacing">6</property>
+                                <property name="hexpand">True</property>
                                 <child>
                                   <object class="GtkLabel" id="output_label">
                                     <property name="label" translatable="yes">None selected</property>
                                     <property name="wrap">True</property>
-                                    <property name="width-chars">28</property>
+                                    <property name="wrap-mode">word-char</property>
+                                    <property name="hexpand">True</property>
+                                    <property name="xalign">1</property>
                                     <property name="justify">right</property>
                                     <style><class name="dim-label"/></style>
                                   </object>
@@ -439,6 +450,7 @@
             </child>
             <child>
               <object class="GtkFrame">
+                <property name="hexpand">True</property>
                 <property name="vexpand">True</property>
                 <property name="margin-start">12</property>
                 <property name="margin-end">12</property>

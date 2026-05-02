@@ -865,6 +865,7 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         row = Gtk.ListBoxRow()
         row._pv_index = index  # type: ignore[attr-defined]
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        box.set_hexpand(True)
         box.set_margin_start(10)
         box.set_margin_end(10)
         box.set_margin_top(8)

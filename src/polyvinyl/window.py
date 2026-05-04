@@ -14,7 +14,10 @@ from pathlib import Path
 
 from gettext import gettext as _
 
-from gi.repository import Adw, Gtk, Gio, GLib, Graphene, Pango, PangoCairo
+import gi
+
+gi.require_version('Gdk', '4.0')
+from gi.repository import Adw, Gdk, Gtk, Gio, GLib, Pango, PangoCairo
 
 import cairo
 
@@ -61,6 +64,9 @@ class PolyvinylWindow(Adw.ApplicationWindow):
     silence_row = Gtk.Template.Child()
     min_silence_row = Gtk.Template.Child()
     min_split_gap_row = Gtk.Template.Child()
+    silence_adjustment = Gtk.Template.Child()
+    min_silence_adjustment = Gtk.Template.Child()
+    min_split_gap_adjustment = Gtk.Template.Child()
     log_buffer = Gtk.Template.Child()
     progress_bar = Gtk.Template.Child()
     lookup_button = Gtk.Template.Child()
@@ -113,9 +119,9 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         self.refresh_markers_button.connect('clicked', self._on_refresh_markers_clicked)
         self.refresh_markers_button.set_sensitive(False)
 
-        self.silence_row.get_adjustment().connect('value-changed', self._on_silence_params_changed)
-        self.min_silence_row.get_adjustment().connect('value-changed', self._on_silence_params_changed)
-        self.min_split_gap_row.get_adjustment().connect('value-changed', self._on_silence_params_changed)
+        self.silence_adjustment.connect('value-changed', self._on_silence_params_changed)
+        self.min_silence_adjustment.connect('value-changed', self._on_silence_params_changed)
+        self.min_split_gap_adjustment.connect('value-changed', self._on_silence_params_changed)
 
         self.play_preview_button.connect('clicked', self._on_play_preview_clicked)
         self.pause_preview_button.connect('clicked', self._on_pause_preview_clicked)
@@ -142,7 +148,7 @@ class PolyvinylWindow(Adw.ApplicationWindow):
 
     def _silence_detect_kwargs(self, dsp_backend: str | None = None) -> dict:
         thr, min_sec = self._silence_params()
-        gap = float(self.min_split_gap_row.get_adjustment().get_value())
+        gap = float(self.min_split_gap_adjustment.get_value())
         n = len(self._titles) if self._titles else 0
         target = n if n >= 1 else None
         return {
@@ -495,8 +501,11 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         lbl.set_margin_end(12)
         pop.set_child(lbl)
 
-        rect = Graphene.Rect()
-        rect.init(max(0.0, x - 6), max(0.0, y - 6), 12.0, max(12.0, h * 0.2))
+        rect = Gdk.Rectangle()
+        rect.x = int(max(0.0, x - 6))
+        rect.y = int(max(0.0, y - 6))
+        rect.width = 12
+        rect.height = int(max(12.0, h * 0.2))
         pop.set_pointing_to(rect)
         pop.popup()
         self._marker_popover = pop
@@ -576,8 +585,8 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         mid = height / 2.0
         scale = max(4.0, mid - 8.0)
         dur = self._duration_sec
-        thr = float(self.silence_row.get_adjustment().get_value())
-        min_s = float(self.min_silence_row.get_adjustment().get_value())
+        thr = float(self.silence_adjustment.get_value())
+        min_s = float(self.min_silence_adjustment.get_value())
 
         if self._rms_values and dur > 0 and width > 0:
             silent_px = [False] * width
@@ -719,12 +728,12 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         self._rms_values = rms_values
         self._rms_times = rms_times
         self._rms_window_sec = float(rms_window_sec)
-        self.silence_row.get_adjustment().set_value(
-            max(self.silence_row.get_adjustment().get_lower(),
-                min(self.silence_row.get_adjustment().get_upper(), thr)))
-        self.min_silence_row.get_adjustment().set_value(
-            max(self.min_silence_row.get_adjustment().get_lower(),
-                min(self.min_silence_row.get_adjustment().get_upper(), min_s)))
+        self.silence_adjustment.set_value(
+            max(self.silence_adjustment.get_lower(),
+                min(self.silence_adjustment.get_upper(), thr)))
+        self.min_silence_adjustment.set_value(
+            max(self.min_silence_adjustment.get_lower(),
+                min(self.min_silence_adjustment.get_upper(), min_s)))
         self._sync_refresh_markers_sensitive()
         self._regenerate_spans_from_detection(quiet=True)
         self.waveform_draw.queue_draw()
@@ -791,8 +800,8 @@ class PolyvinylWindow(Adw.ApplicationWindow):
         return fmts
 
     def _silence_params(self) -> tuple[float, float]:
-        threshold = float(self.silence_row.get_adjustment().get_value())
-        min_sec = float(self.min_silence_row.get_adjustment().get_value())
+        threshold = float(self.silence_adjustment.get_value())
+        min_sec = float(self.min_silence_adjustment.get_value())
         return threshold, min_sec
 
     def _on_detect_clicked(self, *_args):

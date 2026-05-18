@@ -1,0 +1,4 @@
+module PolyvinylDSP {
+    header "polyvinyl_dsp.h"
+    export *
+}

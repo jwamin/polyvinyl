@@ -1,6 +1,13 @@
 # Polyvinyl
 
-GTK 4 / Libadwaita app that **splits long vinyl WAV captures into separate tracks** using **silence detection**, looks up **track titles** via the free **[MusicBrainz](https://musicbrainz.org/)** API, and exports **FLAC**, **MP3**, and/or **16‑bit WAV** with sane folder and file naming.
+App that **splits long vinyl WAV captures into separate tracks** using **silence detection**, looks up **track titles** via the free **[MusicBrainz](https://musicbrainz.org/)** API, and exports **FLAC**, **MP3**, and/or **16-bit WAV** with sane folder and file naming.
+
+Two front ends share the same DSP core:
+
+| Front end | Stack | Platform |
+|---|---|---|
+| **GNOME** | GTK 4 / Libadwaita · Python | Linux (Flatpak / Meson) |
+| **Apple** | SwiftUI · Swift | iOS · macOS · visionOS |
 
 **Repository:** [github.com/jwamin/polyvinyl](https://github.com/jwamin/polyvinyl)
 
@@ -10,25 +17,57 @@ The image above is an **illustrative preview** of the layout (Libadwaita prefere
 
 ## Features
 
-- **Silence-based cueing** — configurable RMS threshold and minimum silence duration to match groove noise on your pressing, plus a **minimum gap between suggested markers** (default **30 seconds**) so short pauses inside a song do not create extra boundaries. Tune the gap in the **Silence detection** group.
-- **Waveform analysis** — builds a peak envelope for the whole rip, estimates noise vs programme level, and **suggests** RMS threshold and minimum silence (applied to the spin buttons; tune manually if needed). After analyze, **initial track markers** are placed from silence detection. The drawing shows **visual feedback** for the current threshold (blue where RMS is below threshold, green where gaps meet minimum silence) and a dashed reference line versus peak level. **Refresh markers** re-runs detection when you change the silence spins.
-- **MusicBrainz-aligned suggestions** — after a successful **Look up track titles**, **Detect tracks** and **Refresh markers from silence** pass the **number of titles** into detection so the suggested **track count** matches the listing when geometry allows (merging weak boundaries or splitting the longest spans if needed).
-- **Track boundary CRUD** — after detection or analysis, edit **start/end** per track, **merge** with the next track, **remove** a track (merge with a neighbour), **double‑click the waveform** to insert a new cut, or **single‑click near a boundary** for a popover that maps **MusicBrainz lookup titles** to the tracks before and after that cut. **Preview** — select a track in the list, then **Play** from its start marker; **Pause** works with **GStreamer** (GNOME runtime); **ffplay** from ffmpeg can be used as a play/stop-only fallback.
-- **MusicBrainz lookup** — enter artist and/or album; the app fetches a track list (rate-limited, descriptive User-Agent, no API key).
-- **Multi-format export** — enable any combination of FLAC (lossless), MP3 (LAME VBR), and PCM WAV per run.
-- **Library-style paths** — `{library}/{Artist}/{Album}/{NN} – {Title}.{ext}` with filesystem-safe names.
-- **Reusable core** — `polyvinyl.core` has **no GTK dependency** (RMS/waveform analysis, silence detection, segment CRUD helpers, lookup, naming, ffmpeg-backed export) for scripts or future front ends.
-- **Native C DSP (optional)** — the same **RMS window series** and **waveform envelope** algorithms are implemented in **`libpolyvinyl_dsp`** (plain C99, no external audio deps) for **Linux** and **macOS** on **Intel and Apple silicon**. Meson builds the shared library and installs it next to the Python modules. **Preferences → General** (or the `dsp-backend` GSetting / `POLYVINYL_DSP_BACKEND` environment variable: `auto`, `python`, `native`) selects **Python**, **native C**, or **automatic** fallback when the library is missing.
+- **Silence-based cueing** — configurable RMS threshold and minimum silence duration to match groove noise on your pressing, plus a **minimum gap between suggested markers** (default **30 seconds**) so short pauses inside a song do not create extra boundaries.
+- **Waveform analysis** — builds a peak envelope for the whole rip, estimates noise vs programme level, and **suggests** RMS threshold and minimum silence. The drawing shows **visual feedback** for the current threshold (blue where RMS is below threshold, green where gaps meet minimum silence) and a dashed reference line versus peak level. **Refresh markers** re-runs detection when you change the silence parameters.
+- **Track boundary editing** — edit **start/end** per track, **merge** with the next track, **remove** a track, **double-tap the waveform** to insert a new cut, or **single-tap near a boundary** for a popover mapping MusicBrainz titles to adjacent tracks. **Preview** individual tracks via `AVAudioPlayer` (Apple) or GStreamer/ffplay (GNOME).
+- **MusicBrainz lookup** — enter artist and/or album; the app fetches a track list (rate-limited to 1.1 s between requests, descriptive User-Agent, no API key required).
+- **Multi-format export** — enable any combination of FLAC (lossless), MP3 (LAME VBR ~190 kbps), and PCM WAV per run.
+- **Library-style paths** — `{library}/{Artist}/{Album}/{NN} - {Title}.{ext}` with filesystem-safe names.
+- **Native C DSP** — RMS window series and waveform envelope are implemented in **`libpolyvinyl_dsp`** (C99, no external audio deps). On Apple platforms this is shipped as **`PolyvinylDSP.xcframework`** (macOS + iOS + visionOS slices); on Linux/GNOME it is a shared library built by Meson.
 
-## Requirements
+## Apple app (SwiftUI)
 
-- **Python 3**, **PyGObject**, **GTK 4**, **Libadwaita** (typical GNOME app stack).
-- **ffmpeg** on `PATH`. MP3 export needs **libmp3lame** in your ffmpeg build.
-- **Preview audio:** **GStreamer** (e.g. `gst-plugins-good`, `gst-libav` for WAV) is preferred for play/pause/stop; otherwise **`ffplay`** from the same ffmpeg install gives play/stop only (pause disabled).
+The `Polyvinyl/` Xcode project targets **iOS 26.5+**, **macOS 26.4+**, and **visionOS 26.5+**.
 
-Flatpak/runtime images often need ffmpeg bundled or supplied via an extension; the stock GNOME runtime may not include every encoder.
+### Requirements
 
-## Build & run (Meson)
+- Xcode 26 or later
+- **ffmpeg** on `PATH` for export (install via Homebrew: `brew install ffmpeg`)
+- The `PolyvinylDSP.xcframework` is pre-built and committed — no CMake step needed
+
+### Architecture
+
+```
+Polyvinyl/
+  AppModel.swift         @MainActor @Observable state + async operations
+  ContentView.swift      7-section Form: Source / Silence / Waveform /
+                           Tracks / MusicBrainz / Output / Log
+  WaveformView.swift     Canvas replica: envelope, silence overlays,
+                           threshold line, orange cut markers
+  TrackListView.swift    Editable title + time rows, merge/delete
+  WavInfoSheet.swift     File metadata sheet (AVAudioFile)
+  DSPBridge.swift        Swift wrapper over PolyvinylDSP C API
+  SilenceDetector.swift  Swift port of silence detection algorithm
+  MusicBrainzClient.swift  actor-based URLSession client
+  AudioExporter.swift    ffmpeg Process wrapper (macOS only)
+  WavInfoReader.swift    WAV metadata via AVAudioFile
+  Models.swift           TrackSpan, WavFileInfo, ExportFormat, RMSResult
+  PolyvinylDSP.xcframework  Static XCFramework (5 slices)
+```
+
+Export uses `ffmpeg` via `Process` and is guarded by `#if os(macOS)`. The waveform analysis and MusicBrainz lookup run on all platforms.
+
+> **Note:** The app sandbox is enabled. To write exported files to a user-chosen folder, set **User Selected File** access to **Read/Write** in the target's Signing & Capabilities.
+
+## GNOME app (GTK 4 / Python)
+
+### Requirements
+
+- **Python 3**, **PyGObject**, **GTK 4**, **Libadwaita**
+- **ffmpeg** on `PATH` (MP3 needs libmp3lame)
+- **Preview audio:** GStreamer (play/pause/stop) or ffplay (play/stop only)
+
+### Build & run (Meson)
 
 ```sh
 meson setup build --prefix=/usr
@@ -37,17 +76,24 @@ sudo meson install -C build
 polyvinyl
 ```
 
-After `meson compile -C build`, bundled UI resources are emitted under `build/`; running from the install prefix (or Flatpak) is the most reliable way to exercise the full UI. The C DSP library is built as `build/src/dsp/libpolyvinyl_dsp.so` (or `.dylib` on macOS); when running from a checkout without installing, set **`POLYVINYL_DSP_LIB`** to that path (or **`MESON_BUILD_ROOT`** so the loader checks `build/src/dsp/`) to try the native backend.
+The C DSP library is built as `build/src/dsp/libpolyvinyl_dsp.so` (or `.dylib` on macOS). When running from a checkout without installing, set `POLYVINYL_DSP_LIB` to that path to enable the native backend. The backend can also be switched in **Preferences -> General** or via the `POLYVINYL_DSP_BACKEND` environment variable (`auto`, `python`, `native`).
 
-### CMake / Make (DSP only)
+### CMake / Make (DSP library only)
 
-From `src/dsp/`, **`make`** (or **`make all`**) configures **`build-cmake/`** and builds **`libpolyvinyl_dsp.a`**, the shared **`libpolyvinyl_dsp`**, and on **Apple** platforms a **`PolyvinylDSP.framework`** bundle (Mach-O at `PolyvinylDSP.framework/PolyvinylDSP`). Targets: **`make static`**, **`make shared`**, **`make framework`** (macOS only). Override the build directory with **`BUILD_DIR=…`**. The Python loader also checks **`PolyvinylDSP.framework`** next to the modules and, on macOS, **`POLYVINYL_DSP_CMAKE_BUILD`** (default `src/dsp/build-cmake`) for the framework binary.
+```sh
+cd src/dsp
+make           # builds static, shared, and (on macOS) framework
+make static    # libpolyvinyl_dsp.a only
+make framework # PolyvinylDSP.framework (macOS only)
+```
 
-## Flatpak
+### Flatpak
 
-`org.jossy.gnome.polyvinyl.json` is a starter manifest (adjust module sources and add **ffmpeg** if needed). Build with `flatpak-builder` against `org.gnome.Platform`.
+`org.jossy.gnome.polyvinyl.json` is a starter manifest. Build with `flatpak-builder` against `org.gnome.Platform`.
 
-## Library usage
+## Core library (Python)
+
+`polyvinyl.core` has no GTK dependency and can be used from scripts:
 
 ```python
 from polyvinyl.core import (
@@ -64,9 +110,7 @@ from polyvinyl.core import (
 )
 ```
 
-Install layout puts the package under the Meson `pkgdatadir` (e.g. `share/polyvinyl/polyvinyl/`); the launcher adds that path to `PYTHONPATH`.
-
-`detect_track_spans(..., min_split_gap_sec=30.0, target_track_count=None)` enforces a minimum time between suggested cuts and, when `target_track_count` is set, adjusts the number of spans to match (via `adjust_span_count_to_target` in `polyvinyl.core.segments`).
+`detect_track_spans(..., min_split_gap_sec=30.0, target_track_count=None)` enforces a minimum time between cuts and, when `target_track_count` is set, adjusts span count to match via `adjust_span_count_to_target`.
 
 ## License
 

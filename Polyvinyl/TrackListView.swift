@@ -21,9 +21,20 @@ struct TrackRow: View {
     @Environment(AppModel.self) private var model
     let index: Int
 
-    private var span: TrackSpan { model.spans[index] }
+    // Safe accessor — spans may shrink while this row is still animating out.
+    private var span: TrackSpan? {
+        index < model.spans.count ? model.spans[index] : nil
+    }
 
     var body: some View {
+        // Guard against stale index during SwiftUI removal animation.
+        if let span {
+            rowContent(span: span)
+        }
+    }
+
+    @ViewBuilder
+    private func rowContent(span: TrackSpan) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Text("Track \(index + 1)")
@@ -63,10 +74,13 @@ struct TrackRow: View {
 
             HStack(spacing: 20) {
                 timeField(label: "Start", value: span.startSec) { v in
-                    model.setSpanRange(at: index, start: v, end: span.endSec)
+                    // Re-check bounds — callback may fire after a delete or merge.
+                    guard index < model.spans.count else { return }
+                    model.setSpanRange(at: index, start: v, end: model.spans[index].endSec)
                 }
                 timeField(label: "End", value: span.endSec) { v in
-                    model.setSpanRange(at: index, start: span.startSec, end: v)
+                    guard index < model.spans.count else { return }
+                    model.setSpanRange(at: index, start: model.spans[index].startSec, end: v)
                 }
                 Spacer()
                 Text(String(format: "%.1f s", span.durationSec))

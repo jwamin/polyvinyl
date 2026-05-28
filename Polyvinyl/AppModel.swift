@@ -5,90 +5,134 @@ import Observation
 @MainActor
 @Observable
 final class AppModel {
-    // Source
-    var wavURL: URL?
-    var wavInfo: WavFileInfo?
-    var outputDirectory: URL?
+    // MARK: - Sides
+    var sides: [RecordSide] = [RecordSide(label: "A")]
+    var currentSideIndex: Int = 0
+    var sideNamingScheme: SideNamingScheme = .letters
 
-    // Waveform data (from DSP analysis)
-    var envelope: [Double] = []
-    var rmsValues: [Double] = []
-    var rmsTimes: [Double] = []
-    var durationSec: Double = 0
-
-    // Silence detection parameters
+    // MARK: - Global silence-detection params (shared across all sides)
     var silenceThreshold: Double = 0.018
     var minSilenceSec: Double = 1.0
     var minSplitGapSec: Double = 30.0
 
-    // Tracks
-    var spans: [TrackSpan] = []
-    var titles: [String] = []
-    var selectedTrackIndex: Int?
-
-    // MusicBrainz
+    // MARK: - MusicBrainz
     var artistQuery: String = ""
     var albumQuery: String = ""
 
-    // Export format toggles
+    // MARK: - Export
+    var outputDirectory: URL?
     var exportFlac: Bool = true
     var exportMp3: Bool = false
     var exportWav: Bool = false
 
-    // UI state
+    // MARK: - UI state
     var isBusy: Bool = false
     var activityLog: String = ""
     var alertMessage: String = ""
     var showingAlert: Bool = false
 
-    // Preview
+    // MARK: - Preview
     private var audioPlayer: AVAudioPlayer?
     private var previewStopTask: Task<Void, Never>?
-    // Track whether we hold a security-scoped resource open for AVAudioPlayer
     private var previewScopeAccessing: Bool = false
+    private var previewURL: URL?          // URL in use by the player (may differ from current side)
     var isPlaying: Bool = false
     var isPaused: Bool = false
 
     private let mbClient: MusicBrainzClient
 
+    // MARK: - Current-side forwarding (views continue to use flat property names)
+
+    var envelope: [Double]      { sides[currentSideIndex].envelope }
+    var rmsValues: [Double]     { sides[currentSideIndex].rmsValues }
+    var rmsTimes: [Double]      { sides[currentSideIndex].rmsTimes }
+    var durationSec: Double     { sides[currentSideIndex].durationSec }
+    var spans: [TrackSpan]      { sides[currentSideIndex].spans }
+    var titles: [String]        { sides[currentSideIndex].titles }
+    var wavURL: URL?            { sides[currentSideIndex].wavURL }
+    var wavInfo: WavFileInfo?   { sides[currentSideIndex].wavInfo }
+    var cutTimes: [Double]      { SilenceDetector.internalCutTimes(spans) }
+
+    var selectedTrackIndex: Int? {
+        get { sides[currentSideIndex].selectedTrackIndex }
+        set { sides[currentSideIndex].selectedTrackIndex = newValue }
+    }
+
+    // MARK: - Computed
+
     var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
     }
-
     var ffmpegPath: String? { AudioExporter.findFFmpeg() }
 
     var canPlay: Bool {
         wavURL != nil && !spans.isEmpty && selectedTrackIndex != nil && (!isPlaying || isPaused)
     }
 
-    var cutTimes: [Double] { SilenceDetector.internalCutTimes(spans) }
+    var totalTrackCount: Int { sides.reduce(0) { $0 + $1.spans.count } }
+
+    // MARK: - Init
 
     init() {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         mbClient = MusicBrainzClient(appVersion: version)
     }
 
+    // MARK: - Side Management
+
+    func addSide() {
+        guard sides.count < 6 else { return }
+        let label = sideNamingScheme.label(for: sides.count)
+        sides.append(RecordSide(label: label))
+        currentSideIndex = sides.count - 1
+        log("Added side \(label).")
+    }
+
+    func removeSide(at index: Int) {
+        guard sides.count > 1, index < sides.count else { return }
+        let label = sides[index].label
+        stopPreview()
+        sides.remove(at: index)
+        currentSideIndex = min(currentSideIndex, sides.count - 1)
+        log("Removed side \(label).")
+    }
+
+    func renameSides() {
+        for i in 0..<sides.count {
+            sides[i].label = sideNamingScheme.label(for: i)
+        }
+    }
+
     // MARK: - File Loading
 
     func loadWAV(url: URL) {
-        // Scope for metadata read only — analyzeWaveform() opens its own scope.
+        // Metadata-only scope — analyzeWaveform() opens its own scope.
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
 
         do {
-            wavInfo = try WavInfoReader.read(url: url)
+            let info = try WavInfoReader.read(url: url)
+            sides[currentSideIndex].wavInfo = info
+            sides[currentSideIndex].durationSec = info.durationSec
         } catch {
             showAlert(error.localizedDescription)
             return
         }
 
-        wavURL = url
-        envelope = []; rmsValues = []; rmsTimes = []
-        spans = []; titles = []
-        selectedTrackIndex = nil
-        durationSec = wavInfo?.durationSec ?? 0
-        log("Loaded \(url.lastPathComponent) — \(wavInfo?.channelDescription ?? "") @ \(wavInfo?.sampleRateHz ?? 0) Hz, \(wavInfo?.formattedDuration ?? "")")
-        Task { await analyzeWaveform() }
+        let sideLabel = sides[currentSideIndex].label
+        let info = sides[currentSideIndex].wavInfo!
+        sides[currentSideIndex].wavURL = url
+        sides[currentSideIndex].envelope = []
+        sides[currentSideIndex].rmsValues = []
+        sides[currentSideIndex].rmsTimes = []
+        sides[currentSideIndex].spans = []
+        sides[currentSideIndex].titles = []
+        sides[currentSideIndex].selectedTrackIndex = nil
+
+        log("Side \(sideLabel): loaded \(url.lastPathComponent) — \(info.channelDescription) @ \(info.sampleRateHz) Hz, \(info.formattedDuration)")
+
+        let idx = currentSideIndex
+        Task { await analyzeWaveform(sideIndex: idx) }
     }
 
     func setOutputDirectory(url: URL) {
@@ -98,10 +142,11 @@ final class AppModel {
 
     // MARK: - Analysis
 
-    func analyzeWaveform() async {
-        guard let url = wavURL else { return }
+    func analyzeWaveform(sideIndex: Int? = nil) async {
+        let idx = sideIndex ?? currentSideIndex
+        guard idx < sides.count, let url = sides[idx].wavURL else { return }
         isBusy = true
-        log("Analyzing waveform…")
+        log("Side \(sides[idx].label): analyzing waveform…")
 
         // Keep scope open for the entire async function — Task.detached inherits process-level
         // file access, so the scope must remain active while the DSP work runs.
@@ -116,40 +161,54 @@ final class AppModel {
             let rms = try await Task.detached(priority: .userInitiated) {
                 try DSPBridge.rmsWindowSeries(path: path)
             }.value
+            guard idx < sides.count else { isBusy = false; return }
             let (sugThresh, sugMinSil) = SilenceDetector.suggestParams(rms: rms)
-            envelope = env
-            durationSec = dur
-            rmsValues = rms.values
-            rmsTimes = rms.times
+            sides[idx].envelope = env
+            sides[idx].durationSec = dur
+            sides[idx].rmsValues = rms.values
+            sides[idx].rmsTimes = rms.times
             silenceThreshold = sugThresh
             minSilenceSec = sugMinSil
-            log(String(format: "Analysis done. Suggested threshold %.3f, min silence %.2fs.", sugThresh, sugMinSil))
-            await detectTracks()
+            log(String(format: "Side %@: analysis done. Suggested threshold %.3f, min silence %.2fs.",
+                       sides[idx].label, sugThresh, sugMinSil))
+            await detectTracks(sideIndex: idx)
         } catch {
-            log("Analysis failed: \(error.localizedDescription)")
+            let label = idx < sides.count ? sides[idx].label : "?"
+            log("Side \(label): analysis failed: \(error.localizedDescription)")
         }
         isBusy = false
     }
 
     // MARK: - Track Detection
 
-    func detectTracks() async {
-        guard !rmsValues.isEmpty else { log("No waveform data — load a WAV file first."); return }
+    func detectTracks(sideIndex: Int? = nil) async {
+        let idx = sideIndex ?? currentSideIndex
+        guard idx < sides.count else { return }
+        guard !sides[idx].rmsValues.isEmpty else {
+            log("Side \(sides[idx].label): no waveform data — load a WAV file first.")
+            return
+        }
         isBusy = true
-        log("Detecting tracks…")
+        log("Side \(sides[idx].label): detecting tracks…")
         let params = SilenceDetector.Parameters(
             silenceThresholdLinear: silenceThreshold,
             minSilenceSec: minSilenceSec,
             minSplitGapSec: minSplitGapSec
         )
-        let snap = RMSResult(values: rmsValues, times: rmsTimes, durationSec: durationSec, sampleRate: 44100)
+        let snap = RMSResult(
+            values: sides[idx].rmsValues,
+            times: sides[idx].rmsTimes,
+            durationSec: sides[idx].durationSec,
+            sampleRate: 44100
+        )
         let detected = await Task.detached(priority: .userInitiated) {
             SilenceDetector.detectTrackSpans(rms: snap, params: params)
         }.value
-        spans = detected
-        titles = (0..<detected.count).map { String(format: "Track %02d", $0 + 1) }
-        selectedTrackIndex = nil
-        log("Detected \(detected.count) track\(detected.count == 1 ? "" : "s").")
+        guard idx < sides.count else { isBusy = false; return }
+        sides[idx].spans = detected
+        sides[idx].titles = (0..<detected.count).map { String(format: "Track %02d", $0 + 1) }
+        sides[idx].selectedTrackIndex = nil
+        log("Side \(sides[idx].label): detected \(detected.count) track\(detected.count == 1 ? "" : "s").")
         isBusy = false
     }
 
@@ -165,8 +224,26 @@ final class AppModel {
             )
             artistQuery = result.artistCredit
             albumQuery = result.releaseTitle
-            titles = AudioExporter.titlesForSpanCount(mbTitles: result.trackTitles, count: spans.count)
-            log("Found: \(result.artistCredit) – \(result.releaseTitle) (\(result.trackTitles.count) tracks)")
+
+            // When medium count matches side count, assign per-medium title lists directly.
+            // Otherwise flatten and distribute across sides in order.
+            if result.mediumCount == sides.count {
+                for (i, mediumTitles) in result.trackTitlesByMedium.enumerated() {
+                    sides[i].titles = AudioExporter.titlesForSpanCount(
+                        mbTitles: mediumTitles, count: sides[i].spans.count)
+                }
+                log("Found: \(result.artistCredit) – \(result.releaseTitle) (\(result.mediumCount) side(s), \(result.trackTitles.count) tracks total)")
+            } else {
+                var offset = 0
+                let allTitles = result.trackTitles
+                for i in 0..<sides.count {
+                    let count = sides[i].spans.count
+                    let slice = Array(allTitles.dropFirst(offset).prefix(count))
+                    sides[i].titles = AudioExporter.titlesForSpanCount(mbTitles: slice, count: count)
+                    offset += count
+                }
+                log("Found: \(result.artistCredit) – \(result.releaseTitle) (\(result.mediumCount) MusicBrainz medium(s) → \(sides.count) side(s), \(result.trackTitles.count) tracks)")
+            }
         } catch {
             log("MusicBrainz lookup failed: \(error.localizedDescription)")
         }
@@ -176,9 +253,11 @@ final class AppModel {
     // MARK: - Export
 
     func exportTracks() async {
-        guard let wavURL else { log("No WAV file loaded."); return }
         guard let outputDir = outputDirectory else { log("No output directory set."); return }
-        guard !spans.isEmpty else { log("No tracks detected."); return }
+        guard sides.contains(where: { $0.wavURL != nil && !$0.spans.isEmpty }) else {
+            log("No tracks to export. Load WAV files and detect tracks first.")
+            return
+        }
 
 #if os(macOS)
         guard let ffmpeg = ffmpegPath else {
@@ -195,30 +274,37 @@ final class AppModel {
         let album = albumQuery.isEmpty ? "Unknown Album" : albumQuery
         let albumDir = AudioExporter.albumOutputDir(base: outputDir, artist: artist, album: album)
 
-        // Security scope must stay open for the entire export — ffmpeg subprocess inherits
-        // the process sandbox but needs the kernel-granted file access to remain active.
-        let accessing = wavURL.startAccessingSecurityScopedResource()
-        defer { if accessing { wavURL.stopAccessingSecurityScopedResource() } }
-        let path = wavURL.path
-
+        // Track numbers are continuous across all sides in order.
+        var globalTrackNumber = 1
         var failed = 0
-        for (i, span) in spans.enumerated() {
-            let title = i < titles.count ? titles[i] : String(format: "Track %02d", i + 1)
-            for fmt in formats {
-                let name = AudioExporter.trackFilename(index: i + 1, title: title, format: fmt)
-                let dest = albumDir.appendingPathComponent(name)
-                do {
-                    try await Task.detached(priority: .userInitiated) {
-                        try AudioExporter.encodeSegment(
-                            sourcePath: path, startSec: span.startSec, endSec: span.endSec,
-                            outputPath: dest, format: fmt, ffmpegBin: ffmpeg
-                        )
-                    }.value
-                    log("✓ \(name)")
-                } catch {
-                    failed += 1
-                    log("✗ \(name): \(error.localizedDescription)")
+
+        for side in sides {
+            guard let sideURL = side.wavURL, !side.spans.isEmpty else { continue }
+
+            // Each side's scope spans its entire export loop.
+            let accessing = sideURL.startAccessingSecurityScopedResource()
+            defer { if accessing { sideURL.stopAccessingSecurityScopedResource() } }
+            let path = sideURL.path
+
+            for (i, span) in side.spans.enumerated() {
+                let title = i < side.titles.count ? side.titles[i] : String(format: "Track %02d", globalTrackNumber)
+                for fmt in formats {
+                    let name = AudioExporter.trackFilename(index: globalTrackNumber, title: title, format: fmt)
+                    let dest = albumDir.appendingPathComponent(name)
+                    do {
+                        try await Task.detached(priority: .userInitiated) {
+                            try AudioExporter.encodeSegment(
+                                sourcePath: path, startSec: span.startSec, endSec: span.endSec,
+                                outputPath: dest, format: fmt, ffmpegBin: ffmpeg
+                            )
+                        }.value
+                        log("✓ Side \(side.label) – \(name)")
+                    } catch {
+                        failed += 1
+                        log("✗ Side \(side.label) – \(name): \(error.localizedDescription)")
+                    }
                 }
+                globalTrackNumber += 1
             }
         }
         log(failed == 0 ? "Export complete." : "Export done with \(failed) error(s).")
@@ -235,12 +321,12 @@ final class AppModel {
         stopPreview()
         let span = spans[idx]
 
-        // Keep scope open for the lifetime of the player — AVAudioPlayer may read
-        // the file lazily during playback rather than copying all data at init.
+        // Keep scope open for the lifetime of the player — AVAudioPlayer may read lazily.
         let accessing = url.startAccessingSecurityScopedResource()
         do {
             let player = try AVAudioPlayer(contentsOf: url)
             previewScopeAccessing = accessing
+            previewURL = url
             player.currentTime = span.startSec
             player.play()
             audioPlayer = player
@@ -252,7 +338,6 @@ final class AppModel {
                 await self?.stopPreview()
             }
         } catch {
-            // Init failed — release scope immediately.
             if accessing { url.stopAccessingSecurityScopedResource() }
             log("Preview error: \(error.localizedDescription)")
         }
@@ -275,37 +360,40 @@ final class AppModel {
         audioPlayer = nil
         isPlaying = false
         isPaused = false
-        if previewScopeAccessing, let url = wavURL {
+        // Release using the URL captured at preview start, not the current side's URL.
+        if previewScopeAccessing, let url = previewURL {
             url.stopAccessingSecurityScopedResource()
             previewScopeAccessing = false
         }
+        previewURL = nil
     }
 
-    // MARK: - Track Editing
+    // MARK: - Track Editing (all operate on current side)
 
     func insertCut(at t: Double) {
-        spans = SilenceDetector.insertCut(spans, at: t, duration: durationSec)
-        titles = AudioExporter.titlesForSpanCount(mbTitles: titles, count: spans.count)
+        sides[currentSideIndex].spans = SilenceDetector.insertCut(spans, at: t, duration: durationSec)
+        sides[currentSideIndex].titles = AudioExporter.titlesForSpanCount(mbTitles: titles, count: spans.count)
     }
 
     func mergeWithNext(at index: Int) {
-        spans = SilenceDetector.mergeWithNext(spans, index: index, duration: durationSec)
-        titles = AudioExporter.titlesForSpanCount(mbTitles: titles, count: spans.count)
+        sides[currentSideIndex].spans = SilenceDetector.mergeWithNext(spans, index: index, duration: durationSec)
+        sides[currentSideIndex].titles = AudioExporter.titlesForSpanCount(mbTitles: titles, count: spans.count)
     }
 
     func deleteTrack(at index: Int) {
         if let sel = selectedTrackIndex, sel == index { selectedTrackIndex = nil }
-        spans = SilenceDetector.deleteTrack(spans, index: index, duration: durationSec)
-        titles = AudioExporter.titlesForSpanCount(mbTitles: titles, count: spans.count)
+        sides[currentSideIndex].spans = SilenceDetector.deleteTrack(spans, index: index, duration: durationSec)
+        sides[currentSideIndex].titles = AudioExporter.titlesForSpanCount(mbTitles: titles, count: spans.count)
     }
 
     func setSpanRange(at index: Int, start: Double, end: Double) {
-        spans = SilenceDetector.setSpanRange(spans, index: index, start: start, end: end, duration: durationSec)
+        sides[currentSideIndex].spans = SilenceDetector.setSpanRange(
+            spans, index: index, start: start, end: end, duration: durationSec)
     }
 
     func updateTitle(at index: Int, to title: String) {
-        guard index < titles.count else { return }
-        titles[index] = title
+        guard index < sides[currentSideIndex].titles.count else { return }
+        sides[currentSideIndex].titles[index] = title
     }
 
     // MARK: - Helpers

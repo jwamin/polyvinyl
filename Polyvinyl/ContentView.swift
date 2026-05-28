@@ -1,11 +1,17 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+private let wavExtensions: Set<String> = ["wav", "wave"]
+
 struct ContentView: View {
     @State private var model = AppModel()
     @State private var showingWavPicker = false
     @State private var showingOutputPicker = false
     @State private var showingWavInfo = false
+    @State private var isDropTargeted = false
+
+    // WAV UTType — prefer the concrete type; fall back to generic audio.
+    private static let wavType: UTType = UTType(filenameExtension: "wav") ?? .audio
 
     var body: some View {
         NavigationStack {
@@ -40,9 +46,40 @@ struct ContentView: View {
             }
         }
         .environment(model)
+        // Drop WAV files anywhere on the window / screen.
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let url = urls.first(where: { wavExtensions.contains($0.pathExtension.lowercased()) })
+            else { return false }
+            model.loadWAV(url: url)
+            return true
+        } isTargeted: { isDropTargeted = $0 }
+        // Highlight the window border while a WAV is being dragged over.
+        .overlay {
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(Color.accentColor, lineWidth: 3)
+                    .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                    .overlay {
+                        VStack(spacing: 10) {
+                            Image(systemName: "waveform.badge.plus")
+                                .font(.system(size: 40))
+                            Text("Drop WAV to open")
+                                .font(.headline)
+                        }
+                        .foregroundStyle(Color.accentColor)
+                    }
+                    .padding(6)
+                    .allowsHitTesting(false)
+            }
+        }
+        // Handle files opened from Finder / Files app.
+        .onOpenURL { url in
+            guard wavExtensions.contains(url.pathExtension.lowercased()) else { return }
+            model.loadWAV(url: url)
+        }
         .fileImporter(
             isPresented: $showingWavPicker,
-            allowedContentTypes: [UTType.audio, UTType(mimeType: "audio/wav") ?? .audio],
+            allowedContentTypes: [Self.wavType],
             allowsMultipleSelection: false
         ) { result in
             if case .success(let urls) = result, let url = urls.first {

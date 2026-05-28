@@ -44,6 +44,8 @@ final class AppModel {
     // Preview
     private var audioPlayer: AVAudioPlayer?
     private var previewStopTask: Task<Void, Never>?
+    // Track whether we hold a security-scoped resource open for AVAudioPlayer
+    private var previewScopeAccessing: Bool = false
     var isPlaying: Bool = false
     var isPaused: Bool = false
 
@@ -69,21 +71,24 @@ final class AppModel {
     // MARK: - File Loading
 
     func loadWAV(url: URL) {
+        // Scope for metadata read only — analyzeWaveform() opens its own scope.
         let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+
         do {
             wavInfo = try WavInfoReader.read(url: url)
-            if accessing { url.stopAccessingSecurityScopedResource() }
-            wavURL = url
-            envelope = []; rmsValues = []; rmsTimes = []
-            spans = []; titles = []
-            selectedTrackIndex = nil
-            durationSec = wavInfo?.durationSec ?? 0
-            log("Loaded \(url.lastPathComponent) — \(wavInfo?.channelDescription ?? "") @ \(wavInfo?.sampleRateHz ?? 0) Hz, \(wavInfo?.formattedDuration ?? "")")
-            Task { await analyzeWaveform() }
         } catch {
-            if accessing { url.stopAccessingSecurityScopedResource() }
             showAlert(error.localizedDescription)
+            return
         }
+
+        wavURL = url
+        envelope = []; rmsValues = []; rmsTimes = []
+        spans = []; titles = []
+        selectedTrackIndex = nil
+        durationSec = wavInfo?.durationSec ?? 0
+        log("Loaded \(url.lastPathComponent) — \(wavInfo?.channelDescription ?? "") @ \(wavInfo?.sampleRateHz ?? 0) Hz, \(wavInfo?.formattedDuration ?? "")")
+        Task { await analyzeWaveform() }
     }
 
     func setOutputDirectory(url: URL) {
@@ -97,6 +102,12 @@ final class AppModel {
         guard let url = wavURL else { return }
         isBusy = true
         log("Analyzing waveform…")
+
+        // Keep scope open for the entire async function — Task.detached inherits process-level
+        // file access, so the scope must remain active while the DSP work runs.
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+
         let path = url.path
         do {
             let (env, dur) = try await Task.detached(priority: .userInitiated) {
@@ -183,9 +194,14 @@ final class AppModel {
         let artist = artistQuery.isEmpty ? "Unknown Artist" : artistQuery
         let album = albumQuery.isEmpty ? "Unknown Album" : albumQuery
         let albumDir = AudioExporter.albumOutputDir(base: outputDir, artist: artist, album: album)
-        let path = wavURL.path
-        var failed = 0
 
+        // Security scope must stay open for the entire export — ffmpeg subprocess inherits
+        // the process sandbox but needs the kernel-granted file access to remain active.
+        let accessing = wavURL.startAccessingSecurityScopedResource()
+        defer { if accessing { wavURL.stopAccessingSecurityScopedResource() } }
+        let path = wavURL.path
+
+        var failed = 0
         for (i, span) in spans.enumerated() {
             let title = i < titles.count ? titles[i] : String(format: "Track %02d", i + 1)
             for fmt in formats {
@@ -218,9 +234,13 @@ final class AppModel {
         guard let url = wavURL, let idx = selectedTrackIndex, idx < spans.count else { return }
         stopPreview()
         let span = spans[idx]
+
+        // Keep scope open for the lifetime of the player — AVAudioPlayer may read
+        // the file lazily during playback rather than copying all data at init.
         let accessing = url.startAccessingSecurityScopedResource()
         do {
             let player = try AVAudioPlayer(contentsOf: url)
+            previewScopeAccessing = accessing
             player.currentTime = span.startSec
             player.play()
             audioPlayer = player
@@ -232,6 +252,7 @@ final class AppModel {
                 await self?.stopPreview()
             }
         } catch {
+            // Init failed — release scope immediately.
             if accessing { url.stopAccessingSecurityScopedResource() }
             log("Preview error: \(error.localizedDescription)")
         }
@@ -254,6 +275,10 @@ final class AppModel {
         audioPlayer = nil
         isPlaying = false
         isPaused = false
+        if previewScopeAccessing, let url = wavURL {
+            url.stopAccessingSecurityScopedResource()
+            previewScopeAccessing = false
+        }
     }
 
     // MARK: - Track Editing

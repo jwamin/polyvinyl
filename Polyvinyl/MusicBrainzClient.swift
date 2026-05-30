@@ -3,7 +3,12 @@ import Foundation
 struct MusicBrainzResult {
     let artistCredit: String
     let releaseTitle: String
-    let trackTitles: [String]
+    /// Track titles grouped by MusicBrainz medium (one array per vinyl side / disc).
+    let trackTitlesByMedium: [[String]]
+
+    /// Flattened list for callers that don't need per-side grouping.
+    var trackTitles: [String] { trackTitlesByMedium.flatMap { $0 } }
+    var mediumCount: Int { trackTitlesByMedium.count }
 }
 
 enum MusicBrainzError: Error, LocalizedError {
@@ -67,16 +72,28 @@ actor MusicBrainzClient {
                 .joined(separator: " & ")
         }
 
-        var trackTitles: [String] = []
-        if let media = d["media"] as? [[String: Any]],
-           let first = media.first,
-           let tracks = first["tracks"] as? [[String: Any]] {
-            trackTitles = tracks.compactMap {
-                ($0["recording"] as? [String: Any])?["title"] as? String ?? $0["title"] as? String
+        // Collect per-medium track title arrays.
+        // MusicBrainz media are ordered by position; each medium corresponds to a vinyl side.
+        var trackTitlesByMedium: [[String]] = []
+        if let media = d["media"] as? [[String: Any]] {
+            for medium in media {
+                guard let tracks = medium["tracks"] as? [[String: Any]] else { continue }
+                let titles = tracks.compactMap {
+                    ($0["recording"] as? [String: Any])?["title"] as? String ?? $0["title"] as? String
+                }
+                if !titles.isEmpty {
+                    trackTitlesByMedium.append(titles)
+                }
             }
         }
 
-        return MusicBrainzResult(artistCredit: artistCredit, releaseTitle: releaseTitle, trackTitles: trackTitles)
+        if trackTitlesByMedium.isEmpty { throw MusicBrainzError.decoding }
+
+        return MusicBrainzResult(
+            artistCredit: artistCredit,
+            releaseTitle: releaseTitle,
+            trackTitlesByMedium: trackTitlesByMedium
+        )
     }
 
     private func wait() async {

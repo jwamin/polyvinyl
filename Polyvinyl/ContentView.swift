@@ -107,7 +107,71 @@ struct ContentView: View {
 
     @ViewBuilder
     private var sourceSection: some View {
+        @Bindable var m = model
         Section("Source") {
+            // Naming scheme picker + add/remove side buttons
+            HStack(spacing: 12) {
+                Picker("Labels", selection: $m.sideNamingScheme) {
+                    ForEach(SideNamingScheme.allCases) { scheme in
+                        Text(scheme.rawValue).tag(scheme)
+                    }
+                }
+                .labelsHidden()
+                .fixedSize()
+                .onChange(of: model.sideNamingScheme) { _, _ in model.renameSides() }
+
+                Spacer()
+
+                Button {
+                    model.addSide()
+                } label: {
+                    Image(systemName: "plus.circle")
+                }
+                .buttonStyle(.borderless)
+                .disabled(model.sides.count >= 6)
+                .help("Add a side (max 6)")
+
+                Button {
+                    model.removeSide(at: model.currentSideIndex)
+                } label: {
+                    Image(systemName: "minus.circle")
+                }
+                .buttonStyle(.borderless)
+                .disabled(model.sides.count <= 1)
+                .help("Remove current side")
+            }
+
+            // Segmented side switcher — only visible when there is more than one side
+            if model.sides.count > 1 {
+                Picker("Side", selection: $m.currentSideIndex) {
+                    ForEach(Array(model.sides.enumerated()), id: \.offset) { i, side in
+                        Text("Side \(side.label)").tag(i)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .onChange(of: model.currentSideIndex) { _, _ in model.stopPreview() }
+
+                // Status row: loaded indicator per side + running total
+                HStack(spacing: 8) {
+                    ForEach(Array(model.sides.enumerated()), id: \.offset) { i, side in
+                        Label {
+                            Text("Side \(side.label)").font(.caption2)
+                        } icon: {
+                            Image(systemName: side.isLoaded ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(side.isLoaded ? .green : .secondary)
+                        }
+                        .font(.caption)
+                        .foregroundStyle(i == model.currentSideIndex ? .primary : .secondary)
+                    }
+                    Spacer()
+                    Text("\(model.totalTrackCount) track\(model.totalTrackCount == 1 ? "" : "s") total")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            // Per-side WAV file loader
             HStack {
                 Button("Open WAV…") { showingWavPicker = true }
                 Spacer()

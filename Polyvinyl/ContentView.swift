@@ -334,6 +334,7 @@ struct ContentView: View {
         Section("Output") {
             Toggle("FLAC (lossless)", isOn: $m.exportFlac)
             Toggle("WAV (PCM 16-bit)", isOn: $m.exportWav)
+            Toggle("AAC (~192 kbps)", isOn: $m.exportAac)
 
             HStack {
                 Button("Choose Folder…") { showingOutputPicker = true }
@@ -353,7 +354,7 @@ struct ContentView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(model.spans.isEmpty || model.outputDirectory == nil || model.isBusy
-                      || (!model.exportFlac && !model.exportWav))
+                      || (!model.exportFlac && !model.exportWav && !model.exportAac))
         }
     }
 

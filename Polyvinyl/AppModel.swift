@@ -23,6 +23,7 @@ final class AppModel {
     var outputDirectory: URL?
     var exportFlac: Bool = true
     var exportWav: Bool = false
+    var exportAac: Bool = false
 
     // MARK: - UI state
     var isBusy: Bool = false
@@ -257,7 +258,7 @@ final class AppModel {
         }
 
         let formats = ExportFormat.allCases.filter {
-            switch $0 { case .flac: exportFlac; case .wav: exportWav }
+            switch $0 { case .flac: exportFlac; case .wav: exportWav; case .aac: exportAac }
         }
         guard !formats.isEmpty else { log("Select at least one export format."); return }
 

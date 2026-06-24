@@ -75,10 +75,15 @@ struct WavFileInfo {
 
 // MARK: - ExportFormat
 enum ExportFormat: String, CaseIterable, Identifiable {
-    case flac, wav
+    case flac, wav, aac
     var id: String { rawValue }
     var displayName: String { rawValue.uppercased() }
-    var fileExtension: String { rawValue }
+    var fileExtension: String {
+        switch self {
+        case .aac: "m4a"
+        case .flac, .wav: rawValue
+        }
+    }
 }
 
 // MARK: - RMSResult

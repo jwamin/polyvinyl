@@ -44,6 +44,14 @@ enum AudioExporter {
                 AVLinearPCMIsFloatKey: false,
                 AVLinearPCMIsBigEndianKey: false,
             ]
+        case .aac:
+            settings = [
+                AVFormatIDKey: kAudioFormatMPEG4AAC,
+                AVSampleRateKey: sampleRate,
+                AVNumberOfChannelsKey: channels,
+                AVEncoderBitRateKey: 192_000,
+                AVEncoderBitRateStrategyKey: AVAudioBitRateStrategy_Variable,
+            ]
         }
 
         let destFile = try AVAudioFile(

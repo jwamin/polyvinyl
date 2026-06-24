@@ -75,7 +75,7 @@ struct WavFileInfo {
 
 // MARK: - ExportFormat
 enum ExportFormat: String, CaseIterable, Identifiable {
-    case flac, mp3, wav
+    case flac, wav
     var id: String { rawValue }
     var displayName: String { rawValue.uppercased() }
     var fileExtension: String { rawValue }

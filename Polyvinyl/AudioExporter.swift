@@ -1,59 +1,77 @@
 import Foundation
+import AVFoundation
 
 enum AudioExportError: Error, LocalizedError {
-    case ffmpegNotFound
     case encodingFailed(String)
     var errorDescription: String? {
-        switch self {
-        case .ffmpegNotFound: "ffmpeg not found. Install via Homebrew: brew install ffmpeg"
-        case .encodingFailed(let m): m
-        }
+        if case .encodingFailed(let m) = self { return m }
+        return nil
     }
 }
 
 enum AudioExporter {
-    static func findFFmpeg() -> String? {
-        let extraDirs = ["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin", "/usr/local/opt/ffmpeg/bin"]
-        let pathDirs = (ProcessInfo.processInfo.environment["PATH"] ?? "").components(separatedBy: ":")
-        return (pathDirs + extraDirs)
-            .map { ($0 as NSString).appendingPathComponent("ffmpeg") }
-            .first { FileManager.default.isExecutableFile(atPath: $0) }
-    }
-
-#if os(macOS)
     static func encodeSegment(
-        sourcePath: String,
+        sourceURL: URL,
         startSec: Double,
         endSec: Double,
         outputPath: URL,
-        format: ExportFormat,
-        ffmpegBin: String
+        format: ExportFormat
     ) throws {
         try FileManager.default.createDirectory(
             at: outputPath.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        let codecArgs: [String]
+
+        let sourceFile = try AVAudioFile(forReading: sourceURL)
+        let sourceFormat = sourceFile.processingFormat
+        let sampleRate = sourceFormat.sampleRate
+        let channels = Int(sourceFormat.channelCount)
+
+        let settings: [String: Any]
         switch format {
-        case .flac: codecArgs = ["-c:a", "flac", "-compression_level", "8"]
-        case .mp3:  codecArgs = ["-c:a", "libmp3lame", "-q:a", "2"]
-        case .wav:  codecArgs = ["-c:a", "pcm_s16le"]
+        case .flac:
+            settings = [
+                AVFormatIDKey: kAudioFormatFLAC,
+                AVSampleRateKey: sampleRate,
+                AVNumberOfChannelsKey: channels,
+            ]
+        case .wav:
+            settings = [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: sampleRate,
+                AVNumberOfChannelsKey: channels,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false,
+            ]
         }
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: ffmpegBin)
-        proc.arguments = ["-y", "-ss", String(startSec), "-to", String(endSec),
-                          "-i", sourcePath] + codecArgs + [outputPath.path]
-        proc.standardOutput = Pipe()
-        let errPipe = Pipe()
-        proc.standardError = errPipe
-        try proc.run()
-        proc.waitUntilExit()
-        if proc.terminationStatus != 0 {
-            let msg = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "Unknown ffmpeg error"
-            throw AudioExportError.encodingFailed(msg)
+
+        let destFile = try AVAudioFile(
+            forWriting: outputPath,
+            settings: settings,
+            commonFormat: sourceFormat.commonFormat,
+            interleaved: sourceFormat.isInterleaved
+        )
+
+        let startFrame = AVAudioFramePosition(max(0, startSec) * sampleRate)
+        let endFrame = min(sourceFile.length, AVAudioFramePosition(endSec * sampleRate))
+        guard endFrame > startFrame else { return }
+        sourceFile.framePosition = startFrame
+
+        let bufferCapacity: AVAudioFrameCount = 32_768
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: bufferCapacity) else {
+            throw AudioExportError.encodingFailed("Could not allocate audio buffer.")
+        }
+
+        var framesRemaining = endFrame - startFrame
+        while framesRemaining > 0 {
+            let framesToRead = AVAudioFrameCount(min(AVAudioFramePosition(bufferCapacity), framesRemaining))
+            try sourceFile.read(into: buffer, frameCount: framesToRead)
+            if buffer.frameLength == 0 { break }
+            try destFile.write(from: buffer)
+            framesRemaining -= AVAudioFramePosition(buffer.frameLength)
         }
     }
-#endif
 
     static func sanitize(_ name: String, maxLength: Int = 120) -> String {
         let invalid = CharacterSet(charactersIn: "/\\:*?\"<>|\0")

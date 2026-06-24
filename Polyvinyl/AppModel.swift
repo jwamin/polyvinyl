@@ -22,7 +22,6 @@ final class AppModel {
     // MARK: - Export
     var outputDirectory: URL?
     var exportFlac: Bool = true
-    var exportMp3: Bool = false
     var exportWav: Bool = false
 
     // MARK: - UI state
@@ -63,8 +62,6 @@ final class AppModel {
     var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
     }
-    var ffmpegPath: String? { AudioExporter.findFFmpeg() }
-
     var canPlay: Bool {
         wavURL != nil && !spans.isEmpty && selectedTrackIndex != nil && (!isPlaying || isPaused)
     }
@@ -259,19 +256,14 @@ final class AppModel {
             return
         }
 
-#if os(macOS)
-        guard let ffmpeg = ffmpegPath else {
-            log("ffmpeg not found. Install via Homebrew: brew install ffmpeg")
-            return
-        }
         let formats = ExportFormat.allCases.filter {
-            switch $0 { case .flac: exportFlac; case .mp3: exportMp3; case .wav: exportWav }
+            switch $0 { case .flac: exportFlac; case .wav: exportWav }
         }
         guard !formats.isEmpty else { log("Select at least one export format."); return }
 
         isBusy = true
         // Output dir comes from a fileImporter-granted security scope — must be active
-        // for the duration of every write underneath it (mkdir + ffmpeg output).
+        // for the duration of every write underneath it.
         let outputAccessing = outputDir.startAccessingSecurityScopedResource()
         defer { if outputAccessing { outputDir.stopAccessingSecurityScopedResource() } }
         let artist = artistQuery.isEmpty ? "Unknown Artist" : artistQuery
@@ -288,7 +280,6 @@ final class AppModel {
             // Each side's scope spans its entire export loop.
             let accessing = sideURL.startAccessingSecurityScopedResource()
             defer { if accessing { sideURL.stopAccessingSecurityScopedResource() } }
-            let path = sideURL.path
 
             for (i, span) in side.spans.enumerated() {
                 let title = i < side.titles.count ? side.titles[i] : String(format: "Track %02d", globalTrackNumber)
@@ -298,8 +289,8 @@ final class AppModel {
                     do {
                         try await Task.detached(priority: .userInitiated) {
                             try AudioExporter.encodeSegment(
-                                sourcePath: path, startSec: span.startSec, endSec: span.endSec,
-                                outputPath: dest, format: fmt, ffmpegBin: ffmpeg
+                                sourceURL: sideURL, startSec: span.startSec, endSec: span.endSec,
+                                outputPath: dest, format: fmt
                             )
                         }.value
                         log("✓ Side \(side.label) – \(name)")
@@ -313,9 +304,6 @@ final class AppModel {
         }
         log(failed == 0 ? "Export complete." : "Export done with \(failed) error(s).")
         isBusy = false
-#else
-        log("Export requires macOS (ffmpeg subprocess is not available on this platform).")
-#endif
     }
 
     // MARK: - Preview

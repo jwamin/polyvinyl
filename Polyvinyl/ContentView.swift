@@ -333,7 +333,6 @@ struct ContentView: View {
         @Bindable var m = model
         Section("Output") {
             Toggle("FLAC (lossless)", isOn: $m.exportFlac)
-            Toggle("MP3 (VBR ~190 kbps)", isOn: $m.exportMp3)
             Toggle("WAV (PCM 16-bit)", isOn: $m.exportWav)
 
             HStack {
@@ -346,14 +345,6 @@ struct ContentView: View {
                 }
             }
 
-#if os(macOS)
-            if model.ffmpegPath == nil {
-                Label("ffmpeg not found — install via Homebrew to enable export", systemImage: "exclamationmark.triangle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-#endif
-
             Button {
                 Task { await model.exportTracks() }
             } label: {
@@ -362,7 +353,7 @@ struct ContentView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(model.spans.isEmpty || model.outputDirectory == nil || model.isBusy
-                      || (!model.exportFlac && !model.exportMp3 && !model.exportWav))
+                      || (!model.exportFlac && !model.exportWav))
         }
     }
 

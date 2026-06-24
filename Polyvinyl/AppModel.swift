@@ -270,6 +270,10 @@ final class AppModel {
         guard !formats.isEmpty else { log("Select at least one export format."); return }
 
         isBusy = true
+        // Output dir comes from a fileImporter-granted security scope — must be active
+        // for the duration of every write underneath it (mkdir + ffmpeg output).
+        let outputAccessing = outputDir.startAccessingSecurityScopedResource()
+        defer { if outputAccessing { outputDir.stopAccessingSecurityScopedResource() } }
         let artist = artistQuery.isEmpty ? "Unknown Artist" : artistQuery
         let album = albumQuery.isEmpty ? "Unknown Album" : albumQuery
         let albumDir = AudioExporter.albumOutputDir(base: outputDir, artist: artist, album: album)
